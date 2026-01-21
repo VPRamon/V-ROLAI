@@ -2,6 +2,7 @@
 
 use crate::scheduling_block::Task;
 use crate::solution_space::Interval;
+use crate::Id;
 use qtty::{Quantity, Unit};
 
 /// Candidate task for scheduling with computed metrics.
@@ -12,7 +13,7 @@ where
     U: Unit,
 {
     pub(crate) task: T,
-    pub(crate) task_id: u64,
+    pub(crate) task_id: Id,
     pub(crate) est: Option<Quantity<U>>,
     pub(crate) deadline: Option<Quantity<U>>,
     pub(crate) flexibility: Quantity<U>,
@@ -25,7 +26,7 @@ where
 {
     /// Creates a new candidate with uninitialized metrics.
     pub fn new(task: T) -> Self {
-        let task_id = task.id();
+        let task_id = task.id().to_owned();
         Self {
             task,
             task_id,
@@ -62,8 +63,8 @@ where
     }
 
     /// Get task ID.
-    pub fn task_id(&self) -> u64 {
-        self.task_id
+    pub fn task_id(&self) -> &str {
+        &self.task_id
     }
 
     /// Get earliest start time.

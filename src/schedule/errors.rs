@@ -1,22 +1,24 @@
 use std::fmt;
 
+use crate::Id;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScheduleError {
     /// Task ID is already present in the schedule
-    DuplicateTaskId(u64),
+    DuplicateTaskId(Id),
     /// A time value was NaN, which is not allowed
     NaNTime,
     /// New interval overlaps with an existing interval
-    OverlapsExisting { new_id: u64, existing_id: u64 },
+    OverlapsExisting { new_id: Id, existing_id: Id },
     /// Task ID was not found in the schedule
-    TaskNotFound(u64),
+    TaskNotFound(Id),
 }
 
 impl fmt::Display for ScheduleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ScheduleError::DuplicateTaskId(id) => {
-                write!(f, "Task ID {} already exists in schedule", id)
+                write!(f, "Task ID {id} already exists in schedule")
             }
             ScheduleError::NaNTime => {
                 write!(f, "Time value cannot be NaN")
@@ -25,14 +27,10 @@ impl fmt::Display for ScheduleError {
                 new_id,
                 existing_id,
             } => {
-                write!(
-                    f,
-                    "Task {} overlaps with existing task {}",
-                    new_id, existing_id
-                )
+                write!(f, "Task {new_id} overlaps with existing task {existing_id}")
             }
             ScheduleError::TaskNotFound(id) => {
-                write!(f, "Task ID {} not found in schedule", id)
+                write!(f, "Task ID {id} not found in schedule")
             }
         }
     }

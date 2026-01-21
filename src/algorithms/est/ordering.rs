@@ -12,7 +12,7 @@ where
     T: Task<U>,
     U: Unit,
 {
-    a.task_id().cmp(&b.task_id())
+    a.task_id().cmp(b.task_id())
 }
 
 /// Compares candidates of the same kind (both endangered or both flexible).

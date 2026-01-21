@@ -1,4 +1,5 @@
 use crate::solution_space::Interval;
+use crate::Id;
 
 /// A total-order key for `f64` using IEEE-754 total order (`total_cmp`).
 /// This lets us use `f64`-backed times as `BTreeMap` keys.
@@ -29,21 +30,24 @@ impl PartialOrd for F64Key {
 }
 
 /// An entry in the schedule, mapping a task ID to its interval.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Entry<U: qtty::Unit> {
-    pub(crate) id: u64,
+    pub(crate) id: Id,
     pub(crate) interval: Interval<U>,
 }
 
 impl<U: qtty::Unit> Entry<U> {
     /// Creates a new schedule entry.
-    pub fn new(id: u64, interval: Interval<U>) -> Self {
-        Self { id, interval }
+    pub fn new(id: impl Into<Id>, interval: Interval<U>) -> Self {
+        Self {
+            id: id.into(),
+            interval,
+        }
     }
 
     /// Returns the task ID.
-    pub fn id(&self) -> u64 {
-        self.id
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
     /// Returns the interval.

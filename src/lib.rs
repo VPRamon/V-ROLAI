@@ -8,3 +8,6 @@ pub mod constraints;
 pub mod schedule;
 pub mod scheduling_block;
 pub mod solution_space;
+
+/// Identifier type used for tasks and scheduling artifacts.
+pub type Id = String;

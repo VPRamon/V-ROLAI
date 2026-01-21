@@ -20,7 +20,7 @@ pub trait Task<U: Unit>: Send + Sync + Debug + 'static {
     /// The leaf constraint type used in constraint trees.
     type ConstraintLeaf: Constraint<U>;
 
-    fn id(&self) -> u64;
+    fn id(&self) -> &str;
     fn name(&self) -> String;
     fn size(&self) -> Quantity<U>;
     fn priority(&self) -> i32 {

@@ -1,4 +1,5 @@
 use crate::solution_space::Interval;
+use crate::Id;
 use qtty::Quantity;
 use std::collections::{BTreeMap, HashMap};
 pub mod entry_key;
@@ -35,9 +36,9 @@ mod tests;
 /// let mut schedule = Schedule::<Second>::new();
 ///
 /// // Add some non-overlapping tasks
-/// schedule.add(1, Interval::from_f64(0.0, 10.0)).unwrap();
-/// schedule.add(2, Interval::from_f64(15.0, 25.0)).unwrap();
-/// schedule.add(3, Interval::from_f64(30.0, 40.0)).unwrap();
+/// schedule.add("1", Interval::from_f64(0.0, 10.0)).unwrap();
+/// schedule.add("2", Interval::from_f64(15.0, 25.0)).unwrap();
+/// schedule.add("3", Interval::from_f64(30.0, 40.0)).unwrap();
 ///
 /// assert_eq!(schedule.len(), 3);
 ///
@@ -50,17 +51,17 @@ mod tests;
 /// assert_eq!(conflicts.len(), 2); // Overlaps with tasks 1 and 2
 ///
 /// // Find which task is at a specific time
-/// assert_eq!(schedule.task_at(Quantity::new(5.0)).unwrap(), Some(1));
+/// assert_eq!(schedule.task_at(Quantity::new(5.0)).unwrap(), Some("1".to_string()));
 /// assert_eq!(schedule.task_at(Quantity::new(12.0)).unwrap(), None);
 ///
 /// // Remove a task
-/// let removed = schedule.remove(2);
+/// let removed = schedule.remove("2");
 /// assert_eq!(removed.unwrap().start().value(), 15.0);
 /// ```
 #[derive(Debug)]
 pub struct Schedule<U: qtty::Unit> {
     by_start: BTreeMap<F64Key, Entry<U>>,
-    start_by_id: HashMap<u64, F64Key>,
+    start_by_id: HashMap<Id, F64Key>,
 }
 
 impl<U: qtty::Unit> Default for Schedule<U> {
@@ -106,13 +107,13 @@ impl<U: qtty::Unit> Schedule<U> {
     }
 
     /// Returns true if task id exists.
-    pub fn contains_task(&self, id: u64) -> bool {
-        self.start_by_id.contains_key(&id)
+    pub fn contains_task(&self, id: &str) -> bool {
+        self.start_by_id.contains_key(id)
     }
 
     /// Gets the interval for a task id (if present).
-    pub fn get_interval(&self, id: u64) -> Option<Interval<U>> {
-        let start = self.start_by_id.get(&id)?;
+    pub fn get_interval(&self, id: &str) -> Option<Interval<U>> {
+        let start = self.start_by_id.get(id)?;
         self.by_start.get(start).map(|e| e.interval)
     }
 
@@ -125,8 +126,9 @@ impl<U: qtty::Unit> Schedule<U> {
     ///
     /// Efficiency: only predecessor + successor checks are needed because the schedule
     /// is maintained as non-overlapping and sorted by start time.
-    pub fn add(&mut self, id: u64, interval: Interval<U>) -> Result<(), ScheduleError> {
-        if self.contains_task(id) {
+    pub fn add(&mut self, id: impl Into<Id>, interval: Interval<U>) -> Result<(), ScheduleError> {
+        let id: Id = id.into();
+        if self.contains_task(&id) {
             return Err(ScheduleError::DuplicateTaskId(id));
         }
 
@@ -145,7 +147,7 @@ impl<U: qtty::Unit> Schedule<U> {
             if prev.interval.overlaps(&interval) {
                 return Err(ScheduleError::OverlapsExisting {
                     new_id: id,
-                    existing_id: prev.id,
+                    existing_id: prev.id.clone(),
                 });
             }
         }
@@ -155,19 +157,25 @@ impl<U: qtty::Unit> Schedule<U> {
             if next.interval.overlaps(&interval) {
                 return Err(ScheduleError::OverlapsExisting {
                     new_id: id,
-                    existing_id: next.id,
+                    existing_id: next.id.clone(),
                 });
             }
         }
 
-        self.by_start.insert(start_k, Entry { id, interval });
+        self.by_start.insert(
+            start_k,
+            Entry {
+                id: id.clone(),
+                interval,
+            },
+        );
         self.start_by_id.insert(id, start_k);
         Ok(())
     }
 
     /// Removes a task by id. Returns its interval if it existed.
-    pub fn remove(&mut self, id: u64) -> Option<Interval<U>> {
-        let start_k = self.start_by_id.remove(&id)?;
+    pub fn remove(&mut self, id: &str) -> Option<Interval<U>> {
+        let start_k = self.start_by_id.remove(id)?;
         let entry = self.by_start.remove(&start_k)?;
         Some(entry.interval)
     }
@@ -187,7 +195,7 @@ impl<U: qtty::Unit> Schedule<U> {
     pub fn conflicts<'a>(
         &'a self,
         query: Interval<U>,
-    ) -> Result<impl Iterator<Item = (u64, Interval<U>)> + 'a, ScheduleError> {
+    ) -> Result<impl Iterator<Item = (Id, Interval<U>)> + 'a, ScheduleError> {
         let q_start = query.start().value();
         let q_end = query.end().value();
 
@@ -219,7 +227,7 @@ impl<U: qtty::Unit> Schedule<U> {
             .range(range_start..)
             .take_while(move |(k, _e)| k.0 <= q_end)
             .filter(move |(_k, e)| e.interval.overlaps(&query))
-            .map(|(_k, e)| (e.id, e.interval));
+            .map(|(_k, e)| (e.id.clone(), e.interval));
 
         Ok(iter)
     }
@@ -228,7 +236,7 @@ impl<U: qtty::Unit> Schedule<U> {
     pub fn conflicts_vec(
         &self,
         query: Interval<U>,
-    ) -> Result<Vec<(u64, Interval<U>)>, ScheduleError> {
+    ) -> Result<Vec<(Id, Interval<U>)>, ScheduleError> {
         Ok(self.conflicts(query)?.collect())
     }
 
@@ -240,11 +248,11 @@ impl<U: qtty::Unit> Schedule<U> {
     /// (Optional) Find the task that contains `pos`, if any.
     ///
     /// Complexity: O(log n).
-    pub fn task_at(&self, pos: Quantity<U>) -> Result<Option<u64>, ScheduleError> {
+    pub fn task_at(&self, pos: Quantity<U>) -> Result<Option<Id>, ScheduleError> {
         let p = Self::key(pos)?;
         if let Some((_k, e)) = self.by_start.range(..=p).next_back() {
             if e.interval.contains(pos) {
-                return Ok(Some(e.id));
+                return Ok(Some(e.id.clone()));
             }
         }
         Ok(None)
@@ -253,13 +261,13 @@ impl<U: qtty::Unit> Schedule<U> {
     /// Returns an iterator over all scheduled tasks in start time order.
     ///
     /// Each item is `(id, interval)`.
-    pub fn iter(&self) -> impl Iterator<Item = (u64, Interval<U>)> + '_ {
-        self.by_start.values().map(|e| (e.id, e.interval))
+    pub fn iter(&self) -> impl Iterator<Item = (Id, Interval<U>)> + '_ {
+        self.by_start.values().map(|e| (e.id.clone(), e.interval))
     }
 
     /// Returns an iterator over all task IDs.
-    pub fn task_ids(&self) -> impl Iterator<Item = u64> + '_ {
-        self.start_by_id.keys().copied()
+    pub fn task_ids(&self) -> impl Iterator<Item = Id> + '_ {
+        self.start_by_id.keys().cloned()
     }
 
     /// Returns an iterator over intervals in start time order.

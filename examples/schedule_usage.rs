@@ -3,8 +3,8 @@
 //! Run with: `cargo run --example schedule_usage`
 
 use qtty::{Quantity, Second};
-use virolai::schedule::Schedule;
-use virolai::solution_space::Interval;
+use vrolai::schedule::Schedule;
+use vrolai::solution_space::Interval;
 
 type Time = Quantity<Second>;
 
@@ -17,10 +17,10 @@ fn main() {
 
     // Add some tasks
     println!("\n--- Adding Tasks ---");
-    add_task(&mut schedule, 1, 0.0, 10.0, "Data Download");
-    add_task(&mut schedule, 2, 15.0, 25.0, "Image Processing");
-    add_task(&mut schedule, 3, 30.0, 45.0, "Transmission");
-    add_task(&mut schedule, 4, 50.0, 55.0, "Calibration");
+    add_task(&mut schedule, "1", 0.0, 10.0, "Data Download");
+    add_task(&mut schedule, "2", 15.0, 25.0, "Image Processing");
+    add_task(&mut schedule, "3", 30.0, 45.0, "Transmission");
+    add_task(&mut schedule, "4", 50.0, 55.0, "Calibration");
 
     println!("\nTotal tasks: {}", schedule.len());
     println!(
@@ -132,7 +132,7 @@ fn main() {
     println!("\n=== Example Complete ===");
 }
 
-fn add_task(schedule: &mut Schedule<Second>, id: u64, start: f64, end: f64, name: &str) {
+fn add_task(schedule: &mut Schedule<Second>, id: &str, start: f64, end: f64, name: &str) {
     let interval = Interval::from_f64(start, end);
     match schedule.add(id, interval) {
         Ok(_) => println!("✓ Added task {} '{}': {}", id, name, interval),

@@ -129,7 +129,7 @@ mod tests {
 
     #[derive(Debug, Clone)]
     struct TestTask {
-        id: u64,
+        id: String,
         name: String,
         size: qtty::Quantity<Second>,
         priority: i32,
@@ -138,8 +138,8 @@ mod tests {
     impl Task<Second> for TestTask {
         type ConstraintLeaf = IntervalConstraint<Second>;
 
-        fn id(&self) -> u64 {
-            self.id
+        fn id(&self) -> &str {
+            &self.id
         }
 
         fn name(&self) -> String {
@@ -158,14 +158,14 @@ mod tests {
     #[test]
     fn test_candidate_creation() {
         let task = TestTask {
-            id: 1,
+            id: "1".to_string(),
             name: "Test".to_string(),
             size: qtty::Quantity::new(10.0),
             priority: 5,
         };
 
         let candidate = Candidate::new(task.clone());
-        assert_eq!(candidate.task_id(), 1);
+        assert_eq!(candidate.task_id(), "1");
         assert!(candidate.is_impossible());
     }
 }
