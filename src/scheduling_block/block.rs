@@ -174,31 +174,33 @@ where
     }
 }
 
-// Implementation of time-specific methods for SchedulingBlock with Second units
-impl<T, D, E> SchedulingBlock<T, Second, D, E>
+// Implementation of time-dependent methods (generic over unit)
+impl<T, U, D, E> SchedulingBlock<T, U, D, E>
 where
-    T: Task<Second>,
+    T: Task<U>,
+    U: Unit,
     E: EdgeType,
 {
     /// Computes critical path: longest chain through the dependency graph.
     ///
-    /// Returns total duration (milliseconds) and the sequence of nodes on the critical path.
+    /// Returns total duration (in the same units as task sizes) and the sequence of nodes
+    /// on the critical path.
     ///
     /// # Errors
     ///
     /// Returns `EmptyGraph` if there are no tasks.
-    pub fn critical_path(&self) -> Result<(u64, Vec<petgraph::graph::NodeIndex>), SchedulingError> {
+    pub fn critical_path(&self) -> Result<(f64, Vec<petgraph::graph::NodeIndex>), SchedulingError> {
         if self.graph.node_count() == 0 {
             return Err(SchedulingError::EmptyGraph);
         }
 
         let topo = self.topo_order()?;
-        let mut earliest_start = vec![0u64; self.graph.node_count()];
+        let mut earliest_start = vec![0.0_f64; self.graph.node_count()];
         let mut predecessor = vec![None; self.graph.node_count()];
 
         for &node in &topo {
             let node_idx = node.index();
-            let task_duration = (self.graph[node].size().value() * 1000.0) as u64;
+            let task_duration = self.graph[node].size().value();
 
             for successor in self.successors(node) {
                 let succ_idx = successor.index();
@@ -211,13 +213,12 @@ where
             }
         }
 
-        let mut max_finish = 0u64;
+        let mut max_finish = 0.0_f64;
         let mut end_node = None;
 
         for node in self.graph.node_indices() {
             let node_idx = node.index();
-            let finish_time =
-                earliest_start[node_idx] + (self.graph[node].size().value() * 1000.0) as u64;
+            let finish_time = earliest_start[node_idx] + self.graph[node].size().value();
 
             if finish_time > max_finish {
                 max_finish = finish_time;
