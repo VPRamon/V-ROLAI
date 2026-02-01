@@ -58,7 +58,7 @@ mod tests;
 /// let removed = schedule.remove("2");
 /// assert_eq!(removed.unwrap().start().value(), 15.0);
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Schedule<U: qtty::Unit> {
     by_start: BTreeMap<F64Key, Entry<U>>,
     start_by_id: HashMap<Id, F64Key>,
@@ -307,6 +307,145 @@ impl<U: qtty::Unit> Schedule<U> {
             Some(end - start)
         } else {
             None
+        }
+    }
+}
+
+// =============================================================================
+// Schedule Serde Support
+// =============================================================================
+
+#[cfg(feature = "serde")]
+mod serde_impl {
+    use super::*;
+    use crate::solution_space::Interval;
+    use serde::de::{self, MapAccess, SeqAccess, Visitor};
+    use serde::ser::{SerializeSeq, SerializeStruct};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::marker::PhantomData;
+
+    /// Helper struct for serializing schedule entries.
+    struct ScheduleEntryOut<'a, U: qtty::Unit> {
+        task: &'a str,
+        interval: &'a Interval<U>,
+    }
+
+    impl<U: qtty::Unit> Serialize for ScheduleEntryOut<'_, U> {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let mut s = serializer.serialize_struct("ScheduleEntry", 2)?;
+            s.serialize_field("task", self.task)?;
+            s.serialize_field("interval", self.interval)?;
+            s.end()
+        }
+    }
+
+    impl<U: qtty::Unit> Serialize for Schedule<U> {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            let mut seq = serializer.serialize_seq(Some(self.len()))?;
+            for (id, interval) in self.iter() {
+                seq.serialize_element(&ScheduleEntryOut {
+                    task: &id,
+                    interval: &interval,
+                })?;
+            }
+            seq.end()
+        }
+    }
+
+    impl<'de, U: qtty::Unit> Deserialize<'de> for Schedule<U> {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            struct ScheduleVisitor<U: qtty::Unit>(PhantomData<U>);
+
+            impl<'de, U: qtty::Unit> Visitor<'de> for ScheduleVisitor<U> {
+                type Value = Schedule<U>;
+
+                fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    formatter.write_str("a sequence of schedule entries")
+                }
+
+                fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+                where
+                    A: SeqAccess<'de>,
+                {
+                    let mut schedule = Schedule::new();
+                    while let Some(entry) = seq.next_element::<ScheduleEntryIn<U>>()? {
+                        schedule
+                            .add(entry.task, entry.interval)
+                            .map_err(de::Error::custom)?;
+                    }
+                    Ok(schedule)
+                }
+            }
+
+            deserializer.deserialize_seq(ScheduleVisitor(PhantomData))
+        }
+    }
+
+    /// Helper struct for deserializing schedule entries with backward compatibility.
+    struct ScheduleEntryIn<U: qtty::Unit> {
+        task: String,
+        interval: Interval<U>,
+    }
+
+    impl<'de, U: qtty::Unit> Deserialize<'de> for ScheduleEntryIn<U> {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            struct EntryVisitor<U: qtty::Unit>(PhantomData<U>);
+
+            impl<'de, U: qtty::Unit> Visitor<'de> for EntryVisitor<U> {
+                type Value = ScheduleEntryIn<U>;
+
+                fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    formatter.write_str("a schedule entry object with 'task' (or 'task_id') and 'interval' fields")
+                }
+
+                fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+                where
+                    M: MapAccess<'de>,
+                {
+                    let mut task: Option<String> = None;
+                    let mut interval: Option<Interval<U>> = None;
+
+                    while let Some(key) = map.next_key::<String>()? {
+                        match key.as_str() {
+                            "task" | "task_id" => {
+                                if task.is_some() {
+                                    return Err(de::Error::duplicate_field("task"));
+                                }
+                                task = Some(map.next_value()?);
+                            }
+                            "interval" => {
+                                if interval.is_some() {
+                                    return Err(de::Error::duplicate_field("interval"));
+                                }
+                                interval = Some(map.next_value()?);
+                            }
+                            _ => {
+                                // Ignore unknown fields
+                                let _ = map.next_value::<serde::de::IgnoredAny>()?;
+                            }
+                        }
+                    }
+
+                    let task = task.ok_or_else(|| de::Error::missing_field("task"))?;
+                    let interval = interval.ok_or_else(|| de::Error::missing_field("interval"))?;
+
+                    Ok(ScheduleEntryIn { task, interval })
+                }
+            }
+
+            deserializer.deserialize_map(EntryVisitor(PhantomData))
         }
     }
 }

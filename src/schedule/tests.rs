@@ -506,3 +506,97 @@ mod nan_handling {
         assert!(result2.is_ok());
     }
 }
+
+// =============================================================================
+// Serde serialization tests
+// =============================================================================
+
+#[cfg(feature = "serde")]
+mod serde_tests {
+    use super::*;
+
+    #[test]
+    fn test_schedule_serialize_deserialize_roundtrip() {
+        let mut schedule = TestSchedule::new();
+        schedule.add("task1", iv(0.0, 10.0)).unwrap();
+        schedule.add("task2", iv(20.0, 30.0)).unwrap();
+        schedule.add("task3", iv(40.0, 50.0)).unwrap();
+
+        let json = serde_json::to_string(&schedule).unwrap();
+        let restored: TestSchedule = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(restored.len(), 3);
+        assert!(restored.contains_task("task1"));
+        assert!(restored.contains_task("task2"));
+        assert!(restored.contains_task("task3"));
+        assert_eq!(restored.get_interval("task1"), Some(iv(0.0, 10.0)));
+        assert_eq!(restored.get_interval("task2"), Some(iv(20.0, 30.0)));
+        assert_eq!(restored.get_interval("task3"), Some(iv(40.0, 50.0)));
+    }
+
+    #[test]
+    fn test_schedule_json_format() {
+        let mut schedule = TestSchedule::new();
+        schedule.add("obs1", iv(100.0, 200.0)).unwrap();
+
+        let json = serde_json::to_string_pretty(&schedule).unwrap();
+        assert!(json.contains("\"task\""));
+        assert!(json.contains("\"obs1\""));
+        assert!(json.contains("\"interval\""));
+        assert!(json.contains("\"start\""));
+        assert!(json.contains("\"end\""));
+    }
+
+    #[test]
+    fn test_schedule_deserialize_with_task_id_alias() {
+        // Test backward compatibility: "task_id" should be accepted
+        let json = r#"[
+            {"task_id": "old_task", "interval": {"start": 0.0, "end": 10.0}},
+            {"task": "new_task", "interval": {"start": 20.0, "end": 30.0}}
+        ]"#;
+
+        let schedule: TestSchedule = serde_json::from_str(json).unwrap();
+
+        assert_eq!(schedule.len(), 2);
+        assert!(schedule.contains_task("old_task"));
+        assert!(schedule.contains_task("new_task"));
+        assert_eq!(schedule.get_interval("old_task"), Some(iv(0.0, 10.0)));
+        assert_eq!(schedule.get_interval("new_task"), Some(iv(20.0, 30.0)));
+    }
+
+    #[test]
+    fn test_schedule_deserialize_rejects_duplicates() {
+        let json = r#"[
+            {"task": "dup", "interval": {"start": 0.0, "end": 10.0}},
+            {"task": "dup", "interval": {"start": 20.0, "end": 30.0}}
+        ]"#;
+
+        let result: Result<TestSchedule, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("already exists"));
+    }
+
+    #[test]
+    fn test_schedule_deserialize_rejects_overlaps() {
+        let json = r#"[
+            {"task": "task1", "interval": {"start": 0.0, "end": 15.0}},
+            {"task": "task2", "interval": {"start": 10.0, "end": 20.0}}
+        ]"#;
+
+        let result: Result<TestSchedule, _> = serde_json::from_str(json);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("overlaps"));
+    }
+
+    #[test]
+    fn test_empty_schedule_serialize_deserialize() {
+        let schedule = TestSchedule::new();
+        let json = serde_json::to_string(&schedule).unwrap();
+        assert_eq!(json, "[]");
+
+        let restored: TestSchedule = serde_json::from_str(&json).unwrap();
+        assert!(restored.is_empty());
+    }
+}
