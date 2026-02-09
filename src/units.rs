@@ -58,7 +58,7 @@ where
     From: SameDim<To>,
     To: Unit,
 {
-    q.to::<To>()
+    q.to_const::<To>()
 }
 
 #[cfg(test)]

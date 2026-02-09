@@ -9,7 +9,7 @@ serde = ["dep:serde", "qtty/serde"]
 
 [dependencies]
 petgraph = "0.8.3"
-qtty = "0.2.2"
+qtty = "0.3.0"
 thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"], optional = true }
 

@@ -29,8 +29,8 @@ mod tests;
 /// # Examples
 ///
 /// ```
-/// use v_rolai::schedule::Schedule;
-/// use v_rolai::solution_space::Interval;
+/// use vrolai::schedule::Schedule;
+/// use vrolai::solution_space::Interval;
 /// use qtty::{Quantity, Second};
 ///
 /// let mut schedule = Schedule::<Second>::new();

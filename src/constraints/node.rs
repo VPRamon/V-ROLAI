@@ -75,7 +75,7 @@ pub enum ConstraintExpr<C> {
         children: Vec<ConstraintExpr<C>>,
     },
     /// A leaf constraint - serializes directly without wrapper.
-    #[serde(untagged)]
+    #[cfg_attr(feature = "serde", serde(untagged))]
     Leaf(C),
 }
 
