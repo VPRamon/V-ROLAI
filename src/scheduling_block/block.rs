@@ -206,13 +206,14 @@ where
         &self.graph
     }
 
-    /// Returns mutable access to the graph.
+    /// Removes the task with the given `id` together with all its incident edges.
     ///
-    /// # Safety
-    ///
-    /// Direct mutations bypass cycle detection. Ensure no cycles are introduced.
-    pub fn graph_mut(&mut self) -> &mut StableGraph<T, D, E> {
-        &mut self.graph
+    /// Both ID-map entries are cleaned up atomically so no stale mappings remain.
+    /// Returns the removed task, or `None` if `id` is not registered.
+    pub fn remove_task(&mut self, id: &str) -> Option<T> {
+        let node = self.node_by_id.remove(id)?;
+        self.id_by_node.remove(&node);
+        self.graph.remove_node(node)
     }
 
     pub fn get_task(&self, node: petgraph::graph::NodeIndex) -> Option<&T> {
@@ -260,21 +261,25 @@ where
         }
 
         let topo = self.topo_order()?;
-        let mut earliest_start = vec![0.0_f64; self.graph.node_count()];
-        let mut predecessor = vec![None; self.graph.node_count()];
+
+        // Use NodeIndex-keyed maps so sparse indices (after removals) are safe.
+        let mut earliest_start: HashMap<petgraph::graph::NodeIndex, f64> =
+            topo.iter().map(|&n| (n, 0.0)).collect();
+        let mut predecessor: HashMap<petgraph::graph::NodeIndex, Option<petgraph::graph::NodeIndex>> =
+            topo.iter().map(|&n| (n, None)).collect();
 
         for &node in &topo {
-            let node_idx = node.index();
             // Use size_on_axis() for scheduling math
             let task_duration = self.graph[node].size_on_axis().value();
+            let node_start = earliest_start[&node];
 
             for successor in self.successors(node) {
-                let succ_idx = successor.index();
-                let new_start = earliest_start[node_idx] + task_duration;
+                let new_start = node_start + task_duration;
+                let succ_start = earliest_start.entry(successor).or_insert(0.0);
 
-                if new_start > earliest_start[succ_idx] {
-                    earliest_start[succ_idx] = new_start;
-                    predecessor[succ_idx] = Some(node);
+                if new_start > *succ_start {
+                    *succ_start = new_start;
+                    predecessor.insert(successor, Some(node));
                 }
             }
         }
@@ -283,9 +288,8 @@ where
         let mut end_node = None;
 
         for node in self.graph.node_indices() {
-            let node_idx = node.index();
             // Use size_on_axis() for scheduling math
-            let finish_time = earliest_start[node_idx] + self.graph[node].size_on_axis().value();
+            let finish_time = earliest_start[&node] + self.graph[node].size_on_axis().value();
 
             if finish_time > max_finish {
                 max_finish = finish_time;
@@ -298,7 +302,7 @@ where
 
         while let Some(node) = current {
             path.push(node);
-            current = predecessor[node.index()];
+            current = predecessor[&node];
         }
 
         path.reverse();
@@ -814,10 +818,77 @@ mod tests {
     }
 
     #[test]
-    fn graph_mut_access() {
+    fn remove_task_cleans_id_maps() {
         let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
-        block.add_task(TestTask::new("A", 10.0));
-        assert_eq!(block.graph_mut().node_count(), 1);
+        block
+            .add_task_with_id(TestTask::new("A", 10.0), Some("a".into()))
+            .unwrap();
+        block
+            .add_task_with_id(TestTask::new("B", 10.0), Some("b".into()))
+            .unwrap();
+
+        let removed = block.remove_task("a");
+        assert!(removed.is_some());
+        assert_eq!(block.task_count(), 1);
+        // Both directions of the ID map must be cleaned up.
+        assert!(block.task_by_id("a").is_none());
+        assert!(block.node_of("a").is_none());
+        // The remaining task must still be reachable.
+        assert!(block.task_by_id("b").is_some());
+    }
+
+    #[test]
+    fn remove_task_returns_none_for_unknown_id() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        assert!(block.remove_task("ghost").is_none());
+    }
+
+    #[test]
+    fn remove_task_strips_incident_edges() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block
+            .add_task_with_id(TestTask::new("A", 10.0), Some("a".into()))
+            .unwrap();
+        block
+            .add_task_with_id(TestTask::new("B", 10.0), Some("b".into()))
+            .unwrap();
+        let na = block.node_of("a").unwrap();
+        let nb = block.node_of("b").unwrap();
+        block.add_dependency(na, nb, ()).unwrap();
+        assert_eq!(block.dependency_count(), 1);
+
+        block.remove_task("a");
+        // The edge from "a" must have been removed with the node.
+        assert_eq!(block.dependency_count(), 0);
+    }
+
+    #[test]
+    fn critical_path_still_correct_after_removal() {
+        // A(10) -> B(20) -> C(30), then remove B; leaves disconnected A(10) and C(30).
+        // Critical path is just C with duration 30.
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block
+            .add_task_with_id(TestTask::new("A", 10.0), Some("a".into()))
+            .unwrap();
+        block
+            .add_task_with_id(TestTask::new("B", 20.0), Some("b".into()))
+            .unwrap();
+        block
+            .add_task_with_id(TestTask::new("C", 30.0), Some("c".into()))
+            .unwrap();
+        let na = block.node_of("a").unwrap();
+        let nb = block.node_of("b").unwrap();
+        let nc = block.node_of("c").unwrap();
+        block.add_dependency(na, nb, ()).unwrap();
+        block.add_dependency(nb, nc, ()).unwrap();
+
+        block.remove_task("b");
+
+        // After removing B the edges are also gone, so A and C are disconnected.
+        let (cost, path) = block.critical_path().unwrap();
+        assert!((cost - 30.0).abs() < 1e-9, "expected 30, got {cost}");
+        assert_eq!(path.len(), 1);
+        assert_eq!(path[0], nc);
     }
 
     // ── Display ───────────────────────────────────────────────────────
