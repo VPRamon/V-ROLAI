@@ -43,7 +43,6 @@ impl<U: Unit + Send + Sync> IntervalConstraint<U> {
     }
 }
 
-// TODO: Implement operators <, <=, >, >= for QTTY
 impl<U: Unit + Send + Sync> Constraint<U> for IntervalConstraint<U> {
     fn compute_intervals(&self, range: Interval<U>) -> Vec<Interval<U>> {
         range
