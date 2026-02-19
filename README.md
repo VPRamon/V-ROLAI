@@ -17,21 +17,26 @@ A Rust library for DAG-based task scheduling using `petgraph`, designed for flex
 ### 1. Define Your Task Types
 
 ```rust
+use qtty::{Quantity, Second};
+use virolai::constraints::IntervalConstraint;
 use virolai::scheduling_block::Task;
 
 #[derive(Debug, Clone)]
 struct MyTask {
     name: String,
-    duration_ms: u64,
+    duration: Quantity<Second>,
 }
 
-impl Task for MyTask {
+impl Task<Second> for MyTask {
+    type SizeUnit = Second;
+    type ConstraintLeaf = IntervalConstraint<Second>;
+
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn duration_ms(&self) -> u64 {
-        self.duration_ms
+    fn size(&self) -> Quantity<Second> {
+        self.duration
     }
 }
 ```
@@ -39,31 +44,37 @@ impl Task for MyTask {
 ### 2. Create a Scheduling Block
 
 ```rust
+use qtty::{Quantity, Second};
 use virolai::scheduling_block::{SchedulingBlock, SchedulingError};
 
 fn main() -> Result<(), SchedulingError> {
-    let mut schedule = SchedulingBlock::new();
-    
-    // Add tasks
-    let task1 = schedule.add_task(MyTask { name: "Task 1".into(), duration_ms: 1000 });
-    let task2 = schedule.add_task(MyTask { name: "Task 2".into(), duration_ms: 2000 });
-    let task3 = schedule.add_task(MyTask { name: "Task 3".into(), duration_ms: 1500 });
-    
+    let mut schedule = SchedulingBlock::<MyTask, Second>::new();
+
+    // Add tasks – each returns a unique String ID
+    let id1 = schedule.add_task(MyTask { name: "Task 1".into(), duration: Quantity::new(1.0) });
+    let id2 = schedule.add_task(MyTask { name: "Task 2".into(), duration: Quantity::new(2.0) });
+    let id3 = schedule.add_task(MyTask { name: "Task 3".into(), duration: Quantity::new(1.5) });
+
+    // Resolve IDs to NodeIndex handles for dependency edges
+    let n1 = schedule.node_of(&id1).unwrap();
+    let n2 = schedule.node_of(&id2).unwrap();
+    let n3 = schedule.node_of(&id3).unwrap();
+
     // Define dependencies (task1 must complete before task2 and task3)
-    schedule.add_dependency(task1, task2, ())?;
-    schedule.add_dependency(task1, task3, ())?;
-    
+    schedule.add_dependency(n1, n2, ())?;
+    schedule.add_dependency(n1, n3, ())?;
+
     // Get execution order
     let order = schedule.topo_order()?;
     for node in order {
         let task = schedule.get_task(node).unwrap();
         println!("Execute: {}", task.name());
     }
-    
-    // Compute critical path
-    let (duration, path) = schedule.critical_path()?;
-    println!("Total duration: {}ms", duration);
-    
+
+    // Compute critical path (duration in axis units – seconds here)
+    let (duration, _path) = schedule.critical_path()?;
+    println!("Total duration: {:.1}s", duration);
+
     Ok(())
 }
 ```
@@ -73,28 +84,34 @@ fn main() -> Result<(), SchedulingError> {
 Use enums to combine different task types:
 
 ```rust
+use qtty::{Quantity, Second};
+use virolai::constraints::IntervalConstraint;
+
 enum TaskType {
     Observation(ObservationTask),
     Calibration(CalibrationTask),
 }
 
-impl Task for TaskType {
+impl Task<Second> for TaskType {
+    type SizeUnit = Second;
+    type ConstraintLeaf = IntervalConstraint<Second>;
+
     fn name(&self) -> &str {
         match self {
             TaskType::Observation(t) => t.name(),
             TaskType::Calibration(t) => t.name(),
         }
     }
-    
-    fn duration_ms(&self) -> u64 {
+
+    fn size(&self) -> Quantity<Second> {
         match self {
-            TaskType::Observation(t) => t.duration_ms(),
-            TaskType::Calibration(t) => t.duration_ms(),
+            TaskType::Observation(t) => t.size(),
+            TaskType::Calibration(t) => t.size(),
         }
     }
 }
 
-let mut schedule = SchedulingBlock::<TaskType, DependencyKind>::new();
+let mut schedule = SchedulingBlock::<TaskType, Second, DependencyKind>::new();
 ```
 
 ## Examples
@@ -117,7 +134,6 @@ See `astro_scheduler/examples/README.md`.
 
 ## Documentation
 
-- **[DESIGN.md](DESIGN.md)**: Detailed design rationale and trade-offs
 - **[API Docs](https://docs.rs/virolai)**: Generated API documentation
 
 ## API Overview
@@ -125,24 +141,39 @@ See `astro_scheduler/examples/README.md`.
 ### Core Trait
 
 ```rust
-pub trait Task: Send + Sync + Debug + 'static {
+pub trait Task<A: Unit>: Send + Sync + Debug + 'static {
+    /// Unit in which the task's size is expressed (must share dimension with `A`).
+    type SizeUnit: SameDim<A>;
+    /// Leaf type used in constraint trees.
+    type ConstraintLeaf: Constraint<A>;
+
     fn name(&self) -> &str;
-    fn duration_ms(&self) -> u64;
-    fn priority(&self) -> Option<i32> { None }
-    fn can_parallelize(&self) -> bool { true }
+    /// Duration in the task's natural unit.
+    fn size(&self) -> Quantity<Self::SizeUnit>;
+    /// Duration converted to the scheduling axis unit (default: `size().to::<A>()`).
+    fn size_on_axis(&self) -> Quantity<A> { self.size().to::<A>() }
+    fn priority(&self) -> i32 { 0 }
+    fn constraints(&self) -> Option<&ConstraintExpr<Self::ConstraintLeaf>> { None }
+    /// Gap inserted after this task in the timeline (default: zero).
+    fn gap_after(&self) -> Quantity<A> { Quantity::new(0.0) }
 }
 ```
 
 ### SchedulingBlock Methods
 
 - `new()` - Create empty scheduling block
-- `add_task(task: T)` - Add a task, returns NodeIndex
-- `add_dependency(from, to, dep)` - Add dependency with cycle detection
-- `topo_order()` - Get topological ordering
-- `critical_path()` - Compute longest path and total duration
-- `roots()` - Get tasks with no dependencies
-- `leaves()` - Get tasks with no dependents
-- `graph()` - Access underlying petgraph for advanced queries
+- `add_task(task: T) -> Id` - Add a task, returns a unique String ID
+- `add_task_with_id(task, Option<Id>) -> Result<Id, SchedulingError>` - Add with a caller-supplied ID
+- `node_of(id: &str) -> Option<NodeIndex>` - Resolve a String ID to its graph node handle
+- `task_by_id(id: &str) -> Option<&T>` - Look up a task by ID
+- `tasks() -> impl Iterator<(Id, &T)>` - Iterate all `(id, task)` pairs
+- `remove_task(id: &str) -> Option<T>` - Remove task and all incident edges by ID
+- `add_dependency(from: NodeIndex, to: NodeIndex, dep: D)` - Add ordering edge with cycle detection
+- `topo_order()` - Get topological ordering (returns `Vec<NodeIndex>`)
+- `critical_path()` - Compute longest path; returns `(f64, Vec<NodeIndex>)` in axis units
+- `roots()` - Get tasks with no predecessors
+- `leaves()` - Get tasks with no successors
+- `graph()` - Access underlying `petgraph::StableGraph` for advanced queries
 
 ### Error Handling
 
@@ -152,6 +183,7 @@ pub enum SchedulingError {
     InvalidNodeIndex(NodeIndex),
     GraphContainsCycle,
     EmptyGraph,
+    DuplicateId(String),
 }
 ```
 
@@ -165,8 +197,6 @@ VIROLAI uses **generic types** (`SchedulingBlock<T: Task, D>`) rather than trait
 - ✅ Natural enum-based composition in Rust
 
 Trait objects are still supported for dynamic use cases (plugins, runtime loading).
-
-See [DESIGN.md](DESIGN.md) for detailed rationale.
 
 ## License
 

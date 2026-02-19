@@ -1,4 +1,4 @@
-//! v_rolai - Versatile Instrumentation Resource Optimization Leveraging AI
+//! virolai - Virtual Resource Optimization Leveraging AI
 //!
 //! A constraint-based task scheduling library supporting dependency graphs,
 //! solution spaces, and prescheduling utilities.
