@@ -74,8 +74,8 @@ where
         // Check if scheduling flexible first would block endangered
         // Account for inter-task delay between flexible and endangered
         let flexible_end = est_f + flexible.task().size_on_axis();
-        let required_delay = endangered.task().compute_delay_after(flexible.task());
-        let endangered_start_after_flexible = flexible_end + required_delay;
+        let required_gap = endangered.task().compute_gap_after(flexible.task());
+        let endangered_start_after_flexible = flexible_end + required_gap;
 
         // If endangered can still start before its deadline, flexible can go first
         if endangered_start_after_flexible.value() <= deadline_e.value() {

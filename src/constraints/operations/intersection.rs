@@ -123,12 +123,12 @@ mod tests {
 
     #[test]
     fn intersection_touching_endpoints() {
-        // A ends at 50, B starts at 50 → touching point
+        // Half-open intervals [0, 50) and [50, 100) share only the boundary
+        // point 50, which is excluded from the first interval, so they have
+        // no intersection.
         let a = vec![iv(0.0, 50.0)];
         let b = vec![iv(50.0, 100.0)];
         let result = compute_intersection(&a, &b);
-        // They overlap at point 50 (inclusive endpoints)
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0], iv(50.0, 50.0));
+        assert!(result.is_empty());
     }
 }

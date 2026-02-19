@@ -52,8 +52,8 @@ where
         !self.is_impossible() && self.flexibility.value() >= threshold as f64
     }
 
-    /// Get the scheduling period for this candidate (in axis units).
-    pub fn get_period(&self) -> Option<Interval<A>> {
+    /// Get the scheduled interval for this candidate (in axis units).
+    pub fn get_interval(&self) -> Option<Interval<A>> {
         self.est
             .map(|start| Interval::new(start, start + self.task.size_on_axis()))
     }
@@ -140,18 +140,18 @@ mod tests {
     }
 
     #[test]
-    fn get_period_returns_correct_interval() {
+    fn get_interval_returns_correct_interval() {
         let mut c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "t");
         c.est = Some(Quantity::new(5.0));
-        let period = c.get_period().unwrap();
-        assert_eq!(period.start().value(), 5.0);
-        assert_eq!(period.end().value(), 15.0); // 5 + 10
+        let interval = c.get_interval().unwrap();
+        assert_eq!(interval.start().value(), 5.0);
+        assert_eq!(interval.end().value(), 15.0); // 5 + 10
     }
 
     #[test]
-    fn get_period_none_when_impossible() {
+    fn get_interval_none_when_impossible() {
         let c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "t");
-        assert!(c.get_period().is_none());
+        assert!(c.get_interval().is_none());
     }
 
     #[test]

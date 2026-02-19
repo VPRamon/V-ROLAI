@@ -79,20 +79,20 @@ pub trait Task<A: Unit>: Send + Sync + Debug + 'static {
         None
     }
 
-    /// Returns the required delay after this task completes.
+    /// Returns the required gap after this task completes.
     ///
-    /// This delay is added to the cursor when advancing the scheduling timeline,
-    /// ensuring proper spacing between tasks (e.g., telescope reconfiguration time).
+    /// This gap is added to the cursor when advancing the scheduling timeline,
+    /// ensuring proper spacing between tasks (e.g., reconfiguration clearance).
     ///
-    /// Default implementation returns zero (no delay).
-    fn delay_after(&self) -> Quantity<A> {
+    /// Default implementation returns zero (no gap).
+    fn gap_after(&self) -> Quantity<A> {
         Quantity::new(0.0)
     }
 
-    /// Computes the required delay between this task and a subsequent task.
+    /// Computes the required gap between this task and a subsequent task.
     ///
     /// This is used in cross-kind ordering comparisons to determine if a flexible
-    /// task would block an endangered task due to required inter-task delays.
+    /// task would block an endangered task due to required inter-task gaps.
     ///
     /// # Arguments
     ///
@@ -100,8 +100,8 @@ pub trait Task<A: Unit>: Send + Sync + Debug + 'static {
     ///
     /// # Returns
     ///
-    /// The required delay in axis units. Default implementation returns zero.
-    fn compute_delay_after(&self, _previous_task: &Self) -> Quantity<A> {
+    /// The required gap in axis units. Default implementation returns zero.
+    fn compute_gap_after(&self, _previous_task: &Self) -> Quantity<A> {
         Quantity::new(0.0)
     }
 }

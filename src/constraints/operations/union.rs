@@ -12,9 +12,12 @@ use qtty::Unit;
 ///
 /// A vector of intervals representing the union, sorted and non-overlapping.
 /// Helper function to merge an interval into result, merging with the last one when needed.
+///
+/// Two half-open intervals are merged when they overlap **or** are directly adjacent
+/// (`last.end == iv.start`). E.g. `[0, 10)` and `[10, 20)` merge into `[0, 20)`.
 fn merge_into<U: Unit>(result: &mut Vec<Interval<U>>, iv: Interval<U>) {
     if let Some(last) = result.last_mut() {
-        if last.overlaps(&iv) {
+        if last.overlaps(&iv) || last.end().value() == iv.start().value() {
             let new_end = crate::constraints::quantity_max(last.end(), iv.end());
             *last = Interval::new(last.start(), new_end);
             return;

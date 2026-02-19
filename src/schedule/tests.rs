@@ -136,11 +136,9 @@ mod overlap_detection {
         let mut schedule = TestSchedule::new();
         schedule.add("1", iv(0.0, 10.0)).unwrap();
 
-        // Touching at boundary - intervals use inclusive endpoints, so [0,10] and [10,20] overlap
+        // Half-open: [0, 10) and [10, 20) share no point → back-to-back is NOT an overlap.
         let result = schedule.add("2", iv(10.0, 20.0));
-        assert!(
-            matches!(result, Err(ScheduleError::OverlapsExisting { new_id, existing_id }) if new_id == "2" && existing_id == "1")
-        );
+        assert!(result.is_ok(), "Back-to-back half-open tasks must not conflict");
     }
 
     #[test]
@@ -257,9 +255,10 @@ mod task_at_position {
         let mut schedule = TestSchedule::new();
         schedule.add("1", iv(0.0, 10.0)).unwrap();
 
-        // Inclusive boundaries
+        // Half-open [0, 10): start is included, end is excluded.
         assert_eq!(schedule.task_at(q(0.0)).unwrap(), Some("1".to_string()));
-        assert_eq!(schedule.task_at(q(10.0)).unwrap(), Some("1".to_string()));
+        assert_eq!(schedule.task_at(q(9.999)).unwrap(), Some("1".to_string()));
+        assert_eq!(schedule.task_at(q(10.0)).unwrap(), None);
     }
 
     #[test]

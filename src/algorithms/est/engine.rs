@@ -3,7 +3,7 @@
 use crate::schedule::Schedule;
 use crate::scheduling_block::Task;
 use crate::solution_space::{Interval, SolutionSpace};
-use qtty::{Quantity, Unit};
+use qtty::Unit;
 
 use super::candidate::Candidate;
 use super::metrics::{compute_deadline, compute_est, compute_flexibility};
@@ -71,7 +71,7 @@ where
 /// This is the main scheduling loop that repeatedly:
 /// 1. Removes the highest-priority candidate
 /// 2. Schedules it at its earliest start time
-/// 3. Advances the cursor past the scheduled task + its delay
+/// 3. Advances the cursor past the scheduled task + its gap
 /// 4. Recomputes remaining candidates against the current frontier
 ///
 /// Candidate metrics are recomputed on `[cursor, horizon.end]` at each iteration.
@@ -87,8 +87,6 @@ pub fn schedule_segment<T, U>(
     T: Task<U>,
     U: Unit,
 {
-    const CURSOR_EPSILON: f64 = 1e-6;
-
     // Initialize cursor at horizon start
     let mut cursor = horizon.start();
 
@@ -110,16 +108,13 @@ pub fn schedule_segment<T, U>(
         let candidate = candidates.remove(0);
 
         // Schedule the task
-        if let Some(period) = candidate.get_period() {
-            if schedule.add(candidate.task_id(), period).is_ok() {
-                // Advance cursor by task end time + delay after
-                //
-                // Intervals are inclusive ([start, end]), so starting a new task at exactly
-                // the previous end is treated as overlap. A tiny epsilon enforces strict
-                // forward progress for the next frontier.
-                cursor = period.end()
-                    + candidate.task().delay_after()
-                    + Quantity::<U>::new(CURSOR_EPSILON);
+        if let Some(interval) = candidate.get_interval() {
+            if schedule.add(candidate.task_id(), interval).is_ok() {
+                // Advance cursor to the end of the scheduled task plus any
+                // required gap. Because intervals are half-open [start, end),
+                // the next task may begin exactly at `interval.end()` without
+                // overlapping — no epsilon offset is needed.
+                cursor = interval.end() + candidate.task().gap_after();
             }
         }
     }

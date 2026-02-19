@@ -31,15 +31,15 @@
 //! - Maintain a separate **cursor** to track scheduling progress
 //! - Repeatedly:
 //!   1. Schedule the highest-priority candidate at its EST
-//!   2. Advance cursor by: `task.end() + task.delay_after()`
+//!   2. Advance cursor by: `task.end() + task.gap_after()`
 //!   3. Re-compute candidate metrics on the remaining horizon `[cursor, end]`
 //! - Continue until no schedulable tasks remain or cursor exceeds horizon
 //!
-//! ## 4. Task Delays
+//! ## 4. Task Gaps
 //!
-//! The algorithm supports inter-task delays via the Task trait:
-//! - `delay_after()`: Required delay after this task completes (added to cursor)
-//! - `compute_delay_after(previous)`: Delay between two specific tasks (used in ordering)
+//! The algorithm supports inter-task gaps via the Task trait:
+//! - `gap_after()`: Required gap after this task completes (added to cursor)
+//! - `compute_gap_after(previous)`: Gap between two specific tasks (used in ordering)
 //!
 //! # Module Structure
 //!
@@ -155,7 +155,7 @@ mod tests {
             self.priority
         }
 
-        fn delay_after(&self) -> qtty::Quantity<Second> {
+        fn gap_after(&self) -> qtty::Quantity<Second> {
             self.delay
         }
     }
@@ -233,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn test_task_delay_after() {
+    fn test_task_gap_after() {
         let task_with_delay = TestTask {
             name: "Delayed Task".to_string(),
             size: qtty::Quantity::new(10.0),
@@ -248,8 +248,8 @@ mod tests {
             delay: qtty::Quantity::new(0.0), // No delay
         };
 
-        assert_eq!(task_with_delay.delay_after().value(), 5.0);
-        assert_eq!(task_no_delay.delay_after().value(), 0.0);
+        assert_eq!(task_with_delay.gap_after().value(), 5.0);
+        assert_eq!(task_no_delay.gap_after().value(), 0.0);
     }
 
     #[test]
@@ -351,13 +351,11 @@ mod tests {
         let second = entries[1].1;
 
         assert!((first.start().value() - 0.0).abs() < 1e-9);
+        // With half-open intervals the second task starts exactly at first.end()
+        // (no epsilon gap needed): [0, 10) then [10, 20).
         assert!(
-            second.start().value() > first.end().value(),
-            "Second task should start strictly after the first ends"
-        );
-        assert!(
-            second.start().value() - first.end().value() < 1e-3,
-            "Gap should only be the scheduler epsilon"
+            (second.start().value() - first.end().value()).abs() < 1e-9,
+            "Second task should start exactly where the first ends (no gap, no epsilon)"
         );
     }
 

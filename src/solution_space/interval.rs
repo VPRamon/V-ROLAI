@@ -4,7 +4,11 @@ use std::fmt::Display;
 
 use qtty::{Quantity, Unit};
 
-/// Continuous range `[start, end]` where a task may be scheduled.
+/// Continuous range `[start, end)` where a task may be scheduled.
+///
+/// The interval is **half-open**: `start` is inclusive, `end` is exclusive.
+/// This avoids ambiguity at shared boundaries (two abutting intervals never
+/// overlap) and eliminates the need for epsilon offsets in the scheduler.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Interval<U: Unit> {
     start: Quantity<U>,
@@ -12,7 +16,7 @@ pub struct Interval<U: Unit> {
 }
 
 impl<U: Unit> Interval<U> {
-    /// Creates interval `[start, end]`.
+    /// Creates interval `[start, end)`.
     ///
     /// # Panics
     ///
@@ -61,14 +65,17 @@ impl<U: Unit> Interval<U> {
         Interval::new(self.start.to(), self.end.to())
     }
 
-    /// Returns true if `position` ∈ `[start, end]`.
+    /// Returns true if `position` ∈ `[start, end)` (start inclusive, end exclusive).
     pub const fn contains(&self, position: Quantity<U>) -> bool {
-        self.start.value() <= position.value() && position.value() <= self.end.value()
+        self.start.value() <= position.value() && position.value() < self.end.value()
     }
 
-    /// Checks if this interval overlaps with another interval.
+    /// Returns true if this interval shares any interior point with `other`.
+    ///
+    /// Because intervals are half-open, abutting intervals (`self.end == other.start`)
+    /// do **not** overlap — they are back-to-back with no shared point.
     pub const fn overlaps(&self, other: &Interval<U>) -> bool {
-        self.start.value() <= other.end.value() && other.start.value() <= self.end.value()
+        self.start.value() < other.end.value() && other.start.value() < self.end.value()
     }
 
     pub fn intersection(&self, other: &Interval<U>) -> Option<Interval<U>> {
@@ -169,7 +176,8 @@ mod tests {
         let interval = Interval::new(Quantity::<Second>::new(0.0), Quantity::<Second>::new(100.0));
         assert!(interval.contains(Quantity::<Second>::new(50.0)));
         assert!(interval.contains(Quantity::<Second>::new(0.0)));
-        assert!(interval.contains(Quantity::<Second>::new(100.0)));
+        // end is exclusive — the boundary point itself is NOT contained
+        assert!(!interval.contains(Quantity::<Second>::new(100.0)));
         assert!(!interval.contains(Quantity::<Second>::new(150.0)));
     }
 
@@ -233,14 +241,14 @@ mod tests {
 
     #[test]
     fn test_intersection_touching_endpoints() {
+        // Half-open intervals that share only a boundary point do NOT overlap
+        // and therefore have no intersection.
         let a = Interval::new(Quantity::<Second>::new(0.0), Quantity::<Second>::new(50.0));
         let b = Interval::new(
             Quantity::<Second>::new(50.0),
             Quantity::<Second>::new(100.0),
         );
-        let result = a.intersection(&b).unwrap();
-        assert_eq!(result.start().value(), 50.0);
-        assert_eq!(result.end().value(), 50.0);
+        assert!(a.intersection(&b).is_none());
     }
 
     #[test]
@@ -262,7 +270,8 @@ mod tests {
     fn test_zero_width_interval() {
         let interval = Interval::new(Quantity::<Second>::new(5.0), Quantity::<Second>::new(5.0));
         assert_eq!(interval.duration().value(), 0.0);
-        assert!(interval.contains(Quantity::<Second>::new(5.0)));
+        // A zero-width half-open interval [5, 5) is empty — contains nothing.
+        assert!(!interval.contains(Quantity::<Second>::new(5.0)));
     }
 
     #[test]
@@ -278,8 +287,10 @@ mod tests {
     fn test_contains_boundary() {
         let interval = Interval::new(Quantity::<Second>::new(10.0), Quantity::<Second>::new(20.0));
         assert!(!interval.contains(Quantity::<Second>::new(9.999)));
+        // start is inclusive
         assert!(interval.contains(Quantity::<Second>::new(10.0)));
-        assert!(interval.contains(Quantity::<Second>::new(20.0)));
+        // end is exclusive
+        assert!(!interval.contains(Quantity::<Second>::new(20.0)));
         assert!(!interval.contains(Quantity::<Second>::new(20.001)));
     }
 

@@ -54,9 +54,8 @@ mod tests {
 
     #[test]
     fn adjacent_is_canonical() {
-        // prev.end = 10 == curr.start = 10, but they overlap at the point
-        // overlaps is: start <= other.end && other.start <= end → 0 <= 10 && 10 <= 10 → true
-        // So adjacent touching intervals are NOT canonical per this function
-        assert!(!is_canonical(&[iv(0.0, 10.0), iv(10.0, 20.0)]));
+        // Half-open intervals [0, 10) and [10, 20) share no interior points,
+        // so they are non-overlapping and correctly sorted → canonical.
+        assert!(is_canonical(&[iv(0.0, 10.0), iv(10.0, 20.0)]));
     }
 }

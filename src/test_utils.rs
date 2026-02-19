@@ -19,7 +19,7 @@ pub fn q(value: f64) -> Quantity<Second> {
 
 /// A configurable mock task for testing scheduling logic.
 ///
-/// Supports setting name, size, priority, delay_after, and optional constraints.
+/// Supports setting name, size, priority, gap_after, and optional constraints.
 #[derive(Debug, Clone)]
 pub struct TestTask {
     pub name: String,
@@ -48,7 +48,7 @@ impl TestTask {
         self
     }
 
-    /// Sets the delay_after and returns self (builder pattern).
+    /// Sets the gap_after and returns self (builder pattern).
     pub fn with_delay(mut self, delay: f64) -> Self {
         self.delay = Quantity::new(delay);
         self
@@ -80,7 +80,7 @@ impl Task<Second> for TestTask {
         self.priority
     }
 
-    fn delay_after(&self) -> Quantity<Second> {
+    fn gap_after(&self) -> Quantity<Second> {
         self.delay
     }
 
@@ -88,7 +88,7 @@ impl Task<Second> for TestTask {
         self.constraints.as_ref()
     }
 
-    fn compute_delay_after(&self, _previous_task: &Self) -> Quantity<Second> {
+    fn compute_gap_after(&self, _previous_task: &Self) -> Quantity<Second> {
         self.delay
     }
 }
