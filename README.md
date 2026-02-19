@@ -1,5 +1,5 @@
-# VROLAI
-Versatile Resource Optimization Leveraging AI
+# VIROLAI
+Virtual Resource Optimization Leveraging AI
 
 A Rust library for DAG-based task scheduling using `petgraph`, designed for flexibility, type safety, and extensibility.
 
