@@ -3,7 +3,7 @@
 //! The core type [`ConstraintExpr<C>`] is generic over the leaf constraint type,
 //! enabling serde serialization when the leaf type is serializable.
 
-use crate::constraints::constraint::Constraint;
+use crate::constraints::hard::static_::constraint::Constraint;
 use crate::solution_space::Interval;
 use crate::solution_space::IntervalSet;
 use qtty::Unit;

@@ -1,4 +1,9 @@
 //! Core constraint trait for computing valid scheduling intervals.
+//!
+//! This module defines the **Hard + Static** constraint interface:
+//! constraints whose feasibility windows are fully determined before the
+//! scheduling loop begins and produce a binary accept/reject decision
+//! (hard) based on fixed (static) input data.
 
 use crate::solution_space::Interval;
 use crate::solution_space::IntervalSet;
@@ -7,7 +12,7 @@ use std::fmt::Debug;
 
 /// Computes intervals where a scheduling condition is satisfied.
 ///
-/// Constraints compose via combinators ([`ConstraintNode`](crate::constraints::ConstraintNode))
+/// Constraints compose via combinators ([`ConstraintExpr`](crate::constraints::ConstraintExpr))
 /// to form trees representing complex AND/OR logic.
 ///
 /// # Contract
