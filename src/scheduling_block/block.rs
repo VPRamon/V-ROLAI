@@ -78,7 +78,7 @@ where
     /// Adds a task with a custom ID, or generates one if None is provided.
     /// Returns the ID that was used (either provided or generated).
     pub fn add_task_with_id(&mut self, task: T, id: Option<Id>) -> Id {
-        let id = id.unwrap_or_else(|| crate::generate_id());
+        let id = id.unwrap_or_else(crate::generate_id);
         let node = self.graph.add_node(task);
         self.id_by_node.insert(node, id.clone());
         self.node_by_id.insert(id.clone(), node);

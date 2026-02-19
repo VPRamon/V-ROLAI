@@ -10,6 +10,6 @@
 //! we compute them once at the resource level and intersect task windows with the
 //! resource's availability windows.
 
-mod resource;
+mod traits;
 
-pub use resource::Resource;
+pub use traits::Resource;

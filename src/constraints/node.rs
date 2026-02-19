@@ -40,7 +40,7 @@ use serde::{Deserialize, Serialize};
 /// // Build a tree
 /// let tree: ConstraintExpr<MyLeaf> = ConstraintExpr::intersection(vec![
 ///     ConstraintExpr::leaf(MyLeaf::TimeWindow { start: 0.0, end: 100.0 }),
-///     ConstraintExpr::not(ConstraintExpr::leaf(MyLeaf::Custom(c))),
+    ///     ConstraintExpr::negate(ConstraintExpr::leaf(MyLeaf::Custom(c))),
 /// ]);
 ///
 /// // Serialize/deserialize works automatically
@@ -86,11 +86,17 @@ impl<C> ConstraintExpr<C> {
     }
 
     /// Creates a NOT node wrapping a subtree.
-    pub fn not(child: ConstraintExpr<C>) -> Self {
+    pub fn negate(child: ConstraintExpr<C>) -> Self {
         ConstraintExpr::Not {
             type_: "not".to_string(),
             child: Box::new(child),
         }
+    }
+
+    /// Creates a NOT node wrapping a subtree.
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(child: ConstraintExpr<C>) -> Self {
+        Self::negate(child)
     }
 
     /// Creates an intersection node (AND logic).
@@ -339,7 +345,7 @@ impl<C> Not for ConstraintExpr<C> {
     type Output = Self;
 
     fn not(self) -> Self {
-        ConstraintExpr::not(self)
+        ConstraintExpr::negate(self)
     }
 }
 
@@ -482,7 +488,7 @@ mod tests {
             ))),
         ]);
 
-        let not = ConstraintExpr::not(forbidden);
+        let not = ConstraintExpr::negate(forbidden);
 
         let intervals = not.compute_intervals(Interval::new(
             Quantity::<Second>::new(0.0),
@@ -557,7 +563,7 @@ mod tests {
     fn test_map_leaves() {
         let tree: ConstraintExpr<i32> = ConstraintExpr::intersection(vec![
             ConstraintExpr::leaf(1),
-            ConstraintExpr::not(ConstraintExpr::leaf(2)),
+            ConstraintExpr::negate(ConstraintExpr::leaf(2)),
         ]);
 
         let doubled = tree.map_leaves(&mut |x| x * 2);
@@ -598,7 +604,7 @@ mod tests {
                     min: 30.0,
                     max: 70.0,
                 }),
-                ConstraintExpr::not(ConstraintExpr::leaf(TestLeaf::TimeWindow {
+                ConstraintExpr::negate(ConstraintExpr::leaf(TestLeaf::TimeWindow {
                     start: 50.0,
                     end: 60.0,
                 })),
