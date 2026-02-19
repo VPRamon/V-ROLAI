@@ -23,6 +23,39 @@ use qtty::{Quantity, Unit};
 #[derive(Debug)]
 pub struct SolutionSpace<U: Unit>(HashMap<Id, Vec<Interval<U>>>);
 
+/// Sorts a list of intervals by start and merges overlapping or touching ones.
+///
+/// After this call the list is in **canonical form**: sorted by start with no
+/// two intervals overlapping or abutting (e.g. `[0,5]` + `[5,10]` → `[0,10]`).
+/// All query methods that rely on binary search require this invariant.
+fn normalize_intervals<U: Unit>(intervals: &mut Vec<Interval<U>>) {
+    if intervals.len() <= 1 {
+        return;
+    }
+    intervals.sort_by(|a, b| {
+        a.start()
+            .value()
+            .partial_cmp(&b.start().value())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut merged: Vec<Interval<U>> = Vec::with_capacity(intervals.len());
+    for interval in intervals.drain(..) {
+        if let Some(last) = merged.last_mut() {
+            if last.end().value() >= interval.start().value() {
+                // Overlapping or touching – extend the current run if needed.
+                if interval.end().value() > last.end().value() {
+                    *last = Interval::new(last.start(), interval.end());
+                }
+            } else {
+                merged.push(interval);
+            }
+        } else {
+            merged.push(interval);
+        }
+    }
+    *intervals = merged;
+}
+
 /// Binary search to find interval containing a position in sorted list.
 fn find_interval_containing_sorted<U: Unit>(
     intervals: &[Interval<U>],
@@ -37,7 +70,14 @@ impl<U: Unit> SolutionSpace<U> {
         Self(HashMap::new())
     }
 
-    pub const fn from_hashmap(map: HashMap<Id, Vec<Interval<U>>>) -> Self {
+    /// Creates a [`SolutionSpace`] from a pre-built map.
+    ///
+    /// Each vector is **normalized** (sorted by start, overlapping intervals
+    /// merged) so that all binary-search queries remain correct.
+    pub fn from_hashmap(mut map: HashMap<Id, Vec<Interval<U>>>) -> Self {
+        for intervals in map.values_mut() {
+            normalize_intervals(intervals);
+        }
         Self(map)
     }
 
@@ -46,17 +86,30 @@ impl<U: Unit> SolutionSpace<U> {
     }
 
     /// Adds an interval for a specific ID.
+    ///
+    /// The stored list is re-normalized after insertion so that binary-search
+    /// queries remain correct regardless of insertion order.
     pub fn add_interval(&mut self, id: impl Into<Id>, interval: Interval<U>) {
-        self.0.entry(id.into()).or_default().push(interval);
+        let v = self.0.entry(id.into()).or_default();
+        v.push(interval);
+        normalize_intervals(v);
     }
 
-    /// Adds multiple intervals for a specific ID (automatically normalized).
+    /// Adds multiple intervals for a specific ID.
+    ///
+    /// The stored list is re-normalized (sorted, overlaps merged) so that
+    /// binary-search queries remain correct.
     pub fn add_intervals(&mut self, id: impl Into<Id>, intervals: Vec<Interval<U>>) {
-        self.0.entry(id.into()).or_default().extend(intervals);
+        let v = self.0.entry(id.into()).or_default();
+        v.extend(intervals);
+        normalize_intervals(v);
     }
 
-    /// Sets the intervals for a specific ID, replacing any existing intervals (automatically normalized).
-    pub fn set_intervals(&mut self, id: impl Into<Id>, intervals: Vec<Interval<U>>) {
+    /// Sets the intervals for a specific ID, replacing any existing intervals.
+    ///
+    /// The supplied list is normalized (sorted, overlaps merged) before storage.
+    pub fn set_intervals(&mut self, id: impl Into<Id>, mut intervals: Vec<Interval<U>>) {
+        normalize_intervals(&mut intervals);
         self.0.insert(id.into(), intervals);
     }
 
@@ -631,5 +684,118 @@ mod tests {
         assert_eq!(space.interval_count(), 1);
         let intervals = space.get_intervals("task1").unwrap();
         assert_eq!(intervals[0].start().value(), 10.0);
+    }
+
+    // ── Invariant-enforcement regression tests ────────────────────────
+
+    /// Out-of-order insertion would previously corrupt binary search results.
+    #[test]
+    fn test_add_interval_out_of_order_is_sorted() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        // Insert later interval first.
+        space.add_interval("task1", Interval::from_f64(60.0, 100.0));
+        space.add_interval("task1", Interval::from_f64(0.0, 40.0));
+
+        let intervals = space.get_intervals("task1").unwrap();
+        assert_eq!(intervals.len(), 2);
+        assert!(
+            intervals[0].start().value() < intervals[1].start().value(),
+            "intervals must be sorted by start"
+        );
+
+        // Binary-search query must find the correct interval.
+        assert!(space.contains_position_for("task1", Quantity::new(10.0)));
+        assert!(space.contains_position_for("task1", Quantity::new(80.0)));
+        assert!(!space.contains_position_for("task1", Quantity::new(50.0)));
+    }
+
+    /// Overlapping intervals must be merged so binary search stays valid.
+    #[test]
+    fn test_add_interval_overlapping_are_merged() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_interval("task1", Interval::from_f64(0.0, 60.0));
+        space.add_interval("task1", Interval::from_f64(40.0, 100.0));
+
+        let intervals = space.get_intervals("task1").unwrap();
+        assert_eq!(intervals.len(), 1, "overlapping intervals must be merged");
+        assert_eq!(intervals[0].start().value(), 0.0);
+        assert_eq!(intervals[0].end().value(), 100.0);
+    }
+
+    /// Touching (abutting) intervals must also be merged.
+    #[test]
+    fn test_add_interval_touching_are_merged() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_interval("task1", Interval::from_f64(0.0, 50.0));
+        space.add_interval("task1", Interval::from_f64(50.0, 100.0));
+
+        let intervals = space.get_intervals("task1").unwrap();
+        assert_eq!(intervals.len(), 1, "touching intervals must be merged");
+        assert_eq!(intervals[0].end().value(), 100.0);
+    }
+
+    /// add_intervals with an unsorted batch must still produce a sorted list.
+    #[test]
+    fn test_add_intervals_unsorted_batch() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_intervals(
+            "task1",
+            vec![
+                Interval::from_f64(200.0, 300.0),
+                Interval::from_f64(0.0, 100.0),
+                Interval::from_f64(50.0, 150.0), // overlaps previous
+            ],
+        );
+
+        let intervals = space.get_intervals("task1").unwrap();
+        // [0,150] and [200,300] – first two merged, third separate
+        assert_eq!(intervals.len(), 2);
+        assert_eq!(intervals[0].start().value(), 0.0);
+        assert_eq!(intervals[0].end().value(), 150.0);
+        assert_eq!(intervals[1].start().value(), 200.0);
+    }
+
+    /// set_intervals must normalize even when given unsorted input.
+    #[test]
+    fn test_set_intervals_normalizes() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.set_intervals(
+            "task1",
+            vec![
+                Interval::from_f64(80.0, 100.0),
+                Interval::from_f64(0.0, 30.0),
+                Interval::from_f64(20.0, 50.0), // overlaps previous
+            ],
+        );
+
+        let intervals = space.get_intervals("task1").unwrap();
+        assert_eq!(intervals.len(), 2);
+        assert_eq!(intervals[0].start().value(), 0.0);
+        assert_eq!(intervals[0].end().value(), 50.0);
+        assert_eq!(intervals[1].start().value(), 80.0);
+
+        // Binary-search query must work correctly.
+        assert!(space.contains_position_for("task1", Quantity::new(25.0)));
+        assert!(!space.contains_position_for("task1", Quantity::new(60.0)));
+    }
+
+    /// from_hashmap must normalize every entry it receives.
+    #[test]
+    fn test_from_hashmap_normalizes() {
+        use std::collections::HashMap;
+        let mut map: HashMap<String, Vec<Interval<Second>>> = HashMap::new();
+        map.insert(
+            "task1".to_string(),
+            vec![
+                Interval::from_f64(50.0, 100.0),
+                Interval::from_f64(0.0, 60.0), // out of order AND overlapping
+            ],
+        );
+
+        let space = SolutionSpace::from_hashmap(map);
+        let intervals = space.get_intervals("task1").unwrap();
+        assert_eq!(intervals.len(), 1);
+        assert_eq!(intervals[0].start().value(), 0.0);
+        assert_eq!(intervals[0].end().value(), 100.0);
     }
 }
