@@ -462,4 +462,174 @@ mod tests {
         assert!(fit_all.is_some());
         assert_eq!(fit_all.unwrap().value(), 0.0); // task2's interval starts earlier
     }
+
+    // ── Gap coverage tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_add_interval() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_interval("task1", Interval::from_f64(0.0, 50.0));
+        assert_eq!(space.count(), 1);
+        assert_eq!(space.interval_count(), 1);
+
+        space.add_interval("task1", Interval::from_f64(60.0, 100.0));
+        assert_eq!(space.count(), 1);
+        assert_eq!(space.interval_count(), 2);
+    }
+
+    #[test]
+    fn test_add_intervals() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_intervals(
+            "task1",
+            vec![
+                Interval::from_f64(0.0, 50.0),
+                Interval::from_f64(60.0, 100.0),
+            ],
+        );
+        assert_eq!(space.count(), 1);
+        assert_eq!(space.interval_count(), 2);
+    }
+
+    #[test]
+    fn test_remove() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_interval("task1", Interval::from_f64(0.0, 50.0));
+        assert!(space.remove("task1"));
+        assert!(space.is_empty());
+        assert!(!space.remove("task1")); // Already removed
+    }
+
+    #[test]
+    fn test_clear() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_interval("task1", Interval::from_f64(0.0, 50.0));
+        space.add_interval("task2", Interval::from_f64(0.0, 50.0));
+        assert_eq!(space.count(), 2);
+        space.clear();
+        assert!(space.is_empty());
+        assert_eq!(space.count(), 0);
+    }
+
+    #[test]
+    fn test_is_empty() {
+        let space: SolutionSpace<Second> = SolutionSpace::new();
+        assert!(space.is_empty());
+    }
+
+    #[test]
+    fn test_can_place_at() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_interval("task1", Interval::from_f64(0.0, 100.0));
+
+        assert!(space.can_place_at(Quantity::new(0.0), Quantity::new(50.0)));
+        assert!(!space.can_place_at(Quantity::new(60.0), Quantity::new(50.0)));
+    }
+
+    #[test]
+    fn test_can_place_at_empty_space() {
+        let space: SolutionSpace<Second> = SolutionSpace::new();
+        assert!(!space.can_place_at(Quantity::new(0.0), Quantity::new(10.0)));
+    }
+
+    #[test]
+    fn test_find_interval_containing_for() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_intervals(
+            "task1",
+            vec![
+                Interval::from_f64(0.0, 50.0),
+                Interval::from_f64(60.0, 100.0),
+            ],
+        );
+
+        let found = space.find_interval_containing_for("task1", Quantity::new(70.0));
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().start().value(), 60.0);
+
+        let not_found = space.find_interval_containing_for("task1", Quantity::new(55.0));
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_find_interval_containing_for_unknown_id() {
+        let space: SolutionSpace<Second> = SolutionSpace::new();
+        assert!(space
+            .find_interval_containing_for("nope", Quantity::new(0.0))
+            .is_none());
+    }
+
+    #[test]
+    fn test_find_interval_containing_across_entries() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_interval("task1", Interval::from_f64(0.0, 50.0));
+        space.add_interval("task2", Interval::from_f64(60.0, 100.0));
+
+        let found = space.find_interval_containing(Quantity::new(70.0));
+        assert!(found.is_some());
+
+        let not_found = space.find_interval_containing(Quantity::new(55.0));
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_default_impl() {
+        let space: SolutionSpace<Second> = SolutionSpace::default();
+        assert!(space.is_empty());
+    }
+
+    #[test]
+    fn test_display() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_interval("task1", Interval::from_f64(0.0, 50.0));
+        let output = format!("{}", space);
+        assert!(output.contains("SolutionSpace"));
+        assert!(output.contains("Entries: 1"));
+        assert!(output.contains("Total intervals: 1"));
+    }
+
+    #[test]
+    fn test_with_capacity() {
+        let space: SolutionSpace<Second> = SolutionSpace::with_capacity(10);
+        assert!(space.is_empty());
+    }
+
+    #[test]
+    fn test_ids_iteration() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_interval("alpha", Interval::from_f64(0.0, 50.0));
+        space.add_interval("beta", Interval::from_f64(60.0, 100.0));
+        let mut ids: Vec<_> = space.ids().collect();
+        ids.sort();
+        assert_eq!(ids, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn test_capacity_multiple_intervals() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_intervals(
+            "task1",
+            vec![
+                Interval::from_f64(0.0, 50.0),
+                Interval::from_f64(60.0, 100.0),
+            ],
+        );
+        assert_eq!(space.capacity("task1").value(), 90.0); // 50 + 40
+    }
+
+    #[test]
+    fn test_capacity_unknown_id() {
+        let space: SolutionSpace<Second> = SolutionSpace::new();
+        assert_eq!(space.capacity("nope").value(), 0.0);
+    }
+
+    #[test]
+    fn test_set_intervals_replaces() {
+        let mut space: SolutionSpace<Second> = SolutionSpace::new();
+        space.add_interval("task1", Interval::from_f64(0.0, 50.0));
+        space.set_intervals("task1", vec![Interval::from_f64(10.0, 20.0)]);
+        assert_eq!(space.interval_count(), 1);
+        let intervals = space.get_intervals("task1").unwrap();
+        assert_eq!(intervals[0].start().value(), 10.0);
+    }
 }

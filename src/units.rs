@@ -99,4 +99,18 @@ mod tests {
         assert!((minute.value() - 1440.0).abs() < 1e-9);
         assert!((second.value() - 86400.0).abs() < 1e-6);
     }
+
+    #[test]
+    fn test_identity_conversion() {
+        let seconds = Quantity::<Second>::new(42.0);
+        let same: Quantity<Second> = convert(seconds);
+        assert!((same.value() - 42.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_zero_conversion() {
+        let zero = Quantity::<Second>::new(0.0);
+        let days: Quantity<Day> = convert(zero);
+        assert_eq!(days.value(), 0.0);
+    }
 }

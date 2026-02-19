@@ -83,3 +83,93 @@ where
         self.flexibility
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::TestTask;
+    use qtty::Second;
+
+    #[test]
+    fn new_candidate_defaults() {
+        let c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "task-1");
+        assert_eq!(c.task_id(), "task-1");
+        assert_eq!(c.task().name(), "t");
+        assert!(c.est().is_none());
+        assert!(c.deadline().is_none());
+        assert_eq!(c.flexibility().value(), 0.0);
+    }
+
+    #[test]
+    fn is_impossible_when_no_est() {
+        let c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "t");
+        assert!(c.is_impossible());
+    }
+
+    #[test]
+    fn not_impossible_with_est() {
+        let mut c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "t");
+        c.est = Some(Quantity::new(0.0));
+        assert!(!c.is_impossible());
+    }
+
+    #[test]
+    fn is_endangered_low_flexibility() {
+        let mut c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "t");
+        c.est = Some(Quantity::new(0.0));
+        c.flexibility = Quantity::new(3.0);
+        assert!(c.is_endangered(5)); // 3 < 5
+        assert!(!c.is_flexible(5));
+    }
+
+    #[test]
+    fn is_flexible_high_flexibility() {
+        let mut c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "t");
+        c.est = Some(Quantity::new(0.0));
+        c.flexibility = Quantity::new(10.0);
+        assert!(c.is_flexible(5)); // 10 >= 5
+        assert!(!c.is_endangered(5));
+    }
+
+    #[test]
+    fn impossible_is_neither_endangered_nor_flexible() {
+        let c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "t");
+        // est is None → impossible
+        assert!(!c.is_endangered(5));
+        assert!(!c.is_flexible(5));
+    }
+
+    #[test]
+    fn get_period_returns_correct_interval() {
+        let mut c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "t");
+        c.est = Some(Quantity::new(5.0));
+        let period = c.get_period().unwrap();
+        assert_eq!(period.start().value(), 5.0);
+        assert_eq!(period.end().value(), 15.0); // 5 + 10
+    }
+
+    #[test]
+    fn get_period_none_when_impossible() {
+        let c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "t");
+        assert!(c.get_period().is_none());
+    }
+
+    #[test]
+    fn est_and_deadline_accessors() {
+        let mut c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "t");
+        c.est = Some(Quantity::new(5.0));
+        c.deadline = Some(Quantity::new(90.0));
+        assert_eq!(c.est().unwrap().value(), 5.0);
+        assert_eq!(c.deadline().unwrap().value(), 90.0);
+    }
+
+    #[test]
+    fn flexibility_at_threshold_boundary() {
+        let mut c = Candidate::<TestTask, Second>::new(TestTask::new("t", 10.0), "t");
+        c.est = Some(Quantity::new(0.0));
+        c.flexibility = Quantity::new(5.0);
+        // Exactly at threshold: >= 5 is flexible, < 5 is endangered
+        assert!(c.is_flexible(5));
+        assert!(!c.is_endangered(5));
+    }
+}

@@ -83,3 +83,83 @@ pub trait Resource<A: Unit>: Send + Sync + Debug + 'static {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::constraints::IntervalConstraint;
+    use qtty::Second;
+
+    #[derive(Debug)]
+    struct UnconstrainedResource;
+
+    impl Resource<Second> for UnconstrainedResource {
+        type ConstraintLeaf = IntervalConstraint<Second>;
+        fn name(&self) -> &str {
+            "unconstrained"
+        }
+        fn constraints(&self) -> Option<&ConstraintExpr<Self::ConstraintLeaf>> {
+            None
+        }
+    }
+
+    #[derive(Debug)]
+    struct ConstrainedResource {
+        constraints: ConstraintExpr<IntervalConstraint<Second>>,
+    }
+
+    impl Resource<Second> for ConstrainedResource {
+        type ConstraintLeaf = IntervalConstraint<Second>;
+        fn name(&self) -> &str {
+            "constrained"
+        }
+        fn constraints(&self) -> Option<&ConstraintExpr<Self::ConstraintLeaf>> {
+            Some(&self.constraints)
+        }
+    }
+
+    #[test]
+    fn unconstrained_returns_full_horizon() {
+        let r = UnconstrainedResource;
+        let horizon = Interval::from_f64(0.0, 100.0);
+        let avail = r.compute_availability(horizon);
+        assert_eq!(avail.len(), 1);
+        assert_eq!(avail[0], horizon);
+    }
+
+    #[test]
+    fn unconstrained_name() {
+        let r = UnconstrainedResource;
+        assert_eq!(r.name(), "unconstrained");
+    }
+
+    #[test]
+    fn constrained_delegates_to_constraint_tree() {
+        let constraint = IntervalConstraint::new(Interval::from_f64(20.0, 80.0));
+        let r = ConstrainedResource {
+            constraints: ConstraintExpr::leaf(constraint),
+        };
+
+        let horizon = Interval::from_f64(0.0, 100.0);
+        let avail = r.compute_availability(horizon);
+        assert_eq!(avail.len(), 1);
+        assert_eq!(avail[0], Interval::from_f64(20.0, 80.0));
+    }
+
+    #[test]
+    fn constrained_with_intersection() {
+        let a = IntervalConstraint::new(Interval::from_f64(0.0, 60.0));
+        let b = IntervalConstraint::new(Interval::from_f64(40.0, 100.0));
+        let r = ConstrainedResource {
+            constraints: ConstraintExpr::intersection(vec![
+                ConstraintExpr::leaf(a),
+                ConstraintExpr::leaf(b),
+            ]),
+        };
+
+        let horizon = Interval::from_f64(0.0, 100.0);
+        let avail = r.compute_availability(horizon);
+        assert_eq!(avail.len(), 1);
+        assert_eq!(avail[0], Interval::from_f64(40.0, 60.0));
+    }
+}

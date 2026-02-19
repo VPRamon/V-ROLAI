@@ -100,3 +100,75 @@ impl<U: Unit> super::SolutionSpace<U> {
         Self::from_hashmap(map)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::constraints::{ConstraintExpr, IntervalConstraint};
+    use crate::scheduling_block::SchedulingBlock;
+    use crate::test_utils::TestTask;
+    use qtty::Second;
+
+    #[test]
+    fn collect_intervals_empty_blocks() {
+        let blocks: Vec<SchedulingBlock<TestTask, Second>> = vec![];
+        let result = collect_intervals(&blocks, Quantity::new(0.0), Quantity::new(100.0));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn collect_intervals_no_constraints() {
+        let mut block: SchedulingBlock<TestTask, Second> = SchedulingBlock::new();
+        block.add_task(TestTask::new("t", 10.0));
+
+        let result = collect_intervals(&[block], Quantity::new(0.0), Quantity::new(100.0));
+        // Tasks without constraints produce no entries in collect_intervals
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn collect_intervals_with_constraints() {
+        let constraint = IntervalConstraint::new(Interval::from_f64(10.0, 60.0));
+        let task = TestTask::new("t", 10.0).with_constraints(ConstraintExpr::leaf(constraint));
+
+        let mut block: SchedulingBlock<TestTask, Second> = SchedulingBlock::new();
+        block.add_task(task);
+
+        let result = collect_intervals(&[block], Quantity::new(0.0), Quantity::new(100.0));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].start().value(), 10.0);
+        assert_eq!(result[0].end().value(), 60.0);
+    }
+
+    #[test]
+    fn populate_filters_by_task_size() {
+        // Task size = 50, constraint window = [0, 30] → too small, filtered out
+        let constraint = IntervalConstraint::new(Interval::from_f64(0.0, 30.0));
+        let task = TestTask::new("t", 50.0).with_constraints(ConstraintExpr::leaf(constraint));
+
+        let mut block: SchedulingBlock<TestTask, Second> = SchedulingBlock::new();
+        let task_id = block.add_task(task);
+
+        let range = Interval::from_f64(0.0, 100.0);
+        let space = super::super::SolutionSpace::populate(&[block], range);
+
+        let intervals = space.get_intervals(&task_id).unwrap();
+        assert!(intervals.is_empty());
+    }
+
+    #[test]
+    fn populate_multiple_blocks() {
+        let mut block1: SchedulingBlock<TestTask, Second> = SchedulingBlock::new();
+        let id1 = block1.add_task(TestTask::new("t1", 10.0));
+
+        let mut block2: SchedulingBlock<TestTask, Second> = SchedulingBlock::new();
+        let id2 = block2.add_task(TestTask::new("t2", 10.0));
+
+        let range = Interval::from_f64(0.0, 100.0);
+        let space = super::super::SolutionSpace::populate(&[block1, block2], range);
+
+        assert_eq!(space.count(), 2);
+        assert!(space.get_intervals(&id1).is_some());
+        assert!(space.get_intervals(&id2).is_some());
+    }
+}

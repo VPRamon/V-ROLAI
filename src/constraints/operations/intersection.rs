@@ -53,3 +53,88 @@ pub fn compute_intersection<U: Unit>(a: &[Interval<U>], b: &[Interval<U>]) -> Ve
     result.shrink_to_fit();
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use qtty::Second;
+
+    fn iv(start: f64, end: f64) -> Interval<Second> {
+        Interval::from_f64(start, end)
+    }
+
+    #[test]
+    fn intersection_disjoint_sets() {
+        let a = vec![iv(0.0, 10.0)];
+        let b = vec![iv(20.0, 30.0)];
+        let result = compute_intersection(&a, &b);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn intersection_fully_overlapping() {
+        let a = vec![iv(0.0, 100.0)];
+        let b = vec![iv(20.0, 80.0)];
+        let result = compute_intersection(&a, &b);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], iv(20.0, 80.0));
+    }
+
+    #[test]
+    fn intersection_partial_overlap() {
+        let a = vec![iv(0.0, 50.0)];
+        let b = vec![iv(30.0, 80.0)];
+        let result = compute_intersection(&a, &b);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], iv(30.0, 50.0));
+    }
+
+    #[test]
+    fn intersection_both_empty() {
+        let a: Vec<Interval<Second>> = vec![];
+        let b: Vec<Interval<Second>> = vec![];
+        let result = compute_intersection(&a, &b);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn intersection_one_empty() {
+        let a = vec![iv(0.0, 50.0)];
+        let b: Vec<Interval<Second>> = vec![];
+        let result = compute_intersection(&a, &b);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn intersection_identical_intervals() {
+        let a = vec![iv(10.0, 50.0)];
+        let b = vec![iv(10.0, 50.0)];
+        let result = compute_intersection(&a, &b);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], iv(10.0, 50.0));
+    }
+
+    #[test]
+    fn intersection_multiple_intervals() {
+        // A: [0, 30], [50, 80]
+        // B: [10, 60]
+        // Result: [10, 30], [50, 60]
+        let a = vec![iv(0.0, 30.0), iv(50.0, 80.0)];
+        let b = vec![iv(10.0, 60.0)];
+        let result = compute_intersection(&a, &b);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], iv(10.0, 30.0));
+        assert_eq!(result[1], iv(50.0, 60.0));
+    }
+
+    #[test]
+    fn intersection_touching_endpoints() {
+        // A ends at 50, B starts at 50 → touching point
+        let a = vec![iv(0.0, 50.0)];
+        let b = vec![iv(50.0, 100.0)];
+        let result = compute_intersection(&a, &b);
+        // They overlap at point 50 (inclusive endpoints)
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], iv(50.0, 50.0));
+    }
+}

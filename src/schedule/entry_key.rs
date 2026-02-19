@@ -55,3 +55,47 @@ impl<U: qtty::Unit> Entry<U> {
         self.interval
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use qtty::Second;
+
+    #[test]
+    fn f64key_value() {
+        let key = F64Key(42.5);
+        assert_eq!(key.value(), 42.5);
+    }
+
+    #[test]
+    fn f64key_ordering() {
+        let a = F64Key(1.0);
+        let b = F64Key(2.0);
+        assert!(a < b);
+        assert!(b > a);
+        assert_eq!(F64Key(3.0), F64Key(3.0));
+    }
+
+    #[test]
+    fn f64key_partial_ord() {
+        let a = F64Key(1.0);
+        let b = F64Key(2.0);
+        assert_eq!(a.partial_cmp(&b), Some(std::cmp::Ordering::Less));
+    }
+
+    #[test]
+    fn entry_new_and_accessors() {
+        let interval = Interval::<Second>::from_f64(10.0, 50.0);
+        let entry = Entry::new("task-1", interval);
+        assert_eq!(entry.id(), "task-1");
+        assert_eq!(entry.interval().start().value(), 10.0);
+        assert_eq!(entry.interval().end().value(), 50.0);
+    }
+
+    #[test]
+    fn entry_custom_id() {
+        let interval = Interval::<Second>::from_f64(0.0, 100.0);
+        let entry = Entry::new("my-custom-id".to_string(), interval);
+        assert_eq!(entry.id(), "my-custom-id");
+    }
+}

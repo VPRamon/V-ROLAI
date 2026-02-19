@@ -124,3 +124,151 @@ pub fn schedule_segment<T, U>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{iv, q, TestTask};
+    use qtty::Second;
+
+    fn make_candidate(id: &str, size: f64) -> Candidate<TestTask, Second> {
+        Candidate::new(TestTask::new(id, size), id)
+    }
+
+    fn make_space_for(ids: &[(&str, Vec<Interval<Second>>)]) -> SolutionSpace<Second> {
+        let mut ss = SolutionSpace::new();
+        for (id, intervals) in ids {
+            ss.set_intervals(id.to_string(), intervals.clone());
+        }
+        ss
+    }
+
+    // ── update_candidates ─────────────────────────────────────────────
+
+    #[test]
+    fn update_candidates_recomputes_metrics() {
+        let mut candidates = vec![make_candidate("a", 10.0), make_candidate("b", 10.0)];
+        let ss = make_space_for(&[("a", vec![iv(0.0, 100.0)]), ("b", vec![iv(50.0, 100.0)])]);
+        let horizon = iv(0.0, 100.0);
+
+        update_candidates(&mut candidates, &ss, horizon, 5);
+
+        // After update, candidates should have EST set and be sorted
+        assert!(candidates[0].est().is_some());
+        assert!(candidates[1].est().is_some());
+    }
+
+    #[test]
+    fn update_candidates_sorts_by_priority() {
+        let mut candidates = vec![make_candidate("low", 10.0), make_candidate("high", 10.0)];
+        // Manually set different metrics to test sorting
+        candidates[0].est = Some(q(0.0));
+        candidates[0].flexibility = q(10.0);
+        candidates[1].est = Some(q(0.0));
+        candidates[1].flexibility = q(10.0);
+
+        let ss = make_space_for(&[
+            ("low", vec![iv(0.0, 100.0)]),
+            ("high", vec![iv(0.0, 100.0)]),
+        ]);
+
+        update_candidates(&mut candidates, &ss, iv(0.0, 100.0), 5);
+        // Both have same EST/priority/flexibility, sorted by ID
+        assert!(candidates[0].task_id() < candidates[1].task_id());
+    }
+
+    // ── is_done ───────────────────────────────────────────────────────
+
+    #[test]
+    fn is_done_empty_candidates() {
+        let candidates: Vec<Candidate<TestTask, Second>> = vec![];
+        assert!(is_done(&candidates, q(0.0), iv(0.0, 100.0)));
+    }
+
+    #[test]
+    fn is_done_all_impossible() {
+        let candidates = vec![make_candidate("a", 10.0)];
+        // est is None by default → impossible
+        assert!(is_done(&candidates, q(0.0), iv(0.0, 100.0)));
+    }
+
+    #[test]
+    fn is_done_cursor_past_horizon() {
+        let mut candidates = vec![make_candidate("a", 10.0)];
+        candidates[0].est = Some(q(0.0));
+        assert!(is_done(&candidates, q(100.0), iv(0.0, 100.0)));
+    }
+
+    #[test]
+    fn is_done_not_done_yet() {
+        let mut candidates = vec![make_candidate("a", 10.0)];
+        candidates[0].est = Some(q(0.0));
+        candidates[0].flexibility = q(5.0);
+        assert!(!is_done(&candidates, q(0.0), iv(0.0, 100.0)));
+    }
+
+    // ── find_next_endangered_index ────────────────────────────────────
+
+    #[test]
+    fn find_next_endangered_all_flexible() {
+        let mut candidates = vec![make_candidate("a", 10.0), make_candidate("b", 10.0)];
+        candidates[0].est = Some(q(0.0));
+        candidates[0].flexibility = q(10.0);
+        candidates[1].est = Some(q(5.0));
+        candidates[1].flexibility = q(10.0);
+
+        let index = find_next_endangered_index(&candidates, 5);
+        assert_eq!(index, 2); // None found → returns len()
+    }
+
+    #[test]
+    fn find_next_endangered_first_is_endangered() {
+        let mut candidates = vec![make_candidate("a", 10.0)];
+        candidates[0].est = Some(q(0.0));
+        candidates[0].flexibility = q(2.0); // < 5
+
+        let index = find_next_endangered_index(&candidates, 5);
+        assert_eq!(index, 0);
+    }
+
+    // ── schedule_segment ──────────────────────────────────────────────
+
+    #[test]
+    fn schedule_segment_single_task() {
+        let mut schedule = Schedule::new();
+        let candidates = vec![make_candidate("a", 10.0)];
+        let ss = make_space_for(&[("a", vec![iv(0.0, 100.0)])]);
+
+        schedule_segment(&mut schedule, candidates, &ss, iv(0.0, 100.0), 5);
+
+        assert_eq!(schedule.len(), 1);
+        assert!(schedule.contains_task("a"));
+        let interval = schedule.get_interval("a").unwrap();
+        assert_eq!(interval.start().value(), 0.0);
+        assert_eq!(interval.end().value(), 10.0);
+    }
+
+    #[test]
+    fn schedule_segment_two_tasks_sequential() {
+        let mut schedule = Schedule::new();
+        let candidates = vec![make_candidate("a", 10.0), make_candidate("b", 10.0)];
+        let ss = make_space_for(&[("a", vec![iv(0.0, 100.0)]), ("b", vec![iv(0.0, 100.0)])]);
+
+        schedule_segment(&mut schedule, candidates, &ss, iv(0.0, 100.0), 5);
+
+        assert_eq!(schedule.len(), 2);
+        assert!(schedule.contains_task("a"));
+        assert!(schedule.contains_task("b"));
+    }
+
+    #[test]
+    fn schedule_segment_impossible_task_skipped() {
+        let mut schedule = Schedule::new();
+        let candidates = vec![make_candidate("impossible", 200.0)]; // too big for any window
+        let ss = make_space_for(&[("impossible", vec![iv(0.0, 50.0)])]);
+
+        schedule_segment(&mut schedule, candidates, &ss, iv(0.0, 50.0), 5);
+
+        assert_eq!(schedule.len(), 0);
+    }
+}

@@ -325,3 +325,451 @@ where
         write!(f, "}}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::TestTask;
+
+    // ── Construction ──────────────────────────────────────────────────
+
+    #[test]
+    fn new_creates_empty_block() {
+        let block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        assert_eq!(block.task_count(), 0);
+        assert_eq!(block.dependency_count(), 0);
+    }
+
+    #[test]
+    fn default_creates_empty_block() {
+        let block: SchedulingBlock<TestTask> = SchedulingBlock::default();
+        assert_eq!(block.task_count(), 0);
+        assert_eq!(block.dependency_count(), 0);
+    }
+
+    // ── Task addition ─────────────────────────────────────────────────
+
+    #[test]
+    fn add_task_returns_unique_ids() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        let id1 = block.add_task(TestTask::new("A", 10.0));
+        let id2 = block.add_task(TestTask::new("B", 20.0));
+        assert_ne!(id1, id2);
+        assert!(!id1.is_empty());
+        assert!(!id2.is_empty());
+        assert_eq!(block.task_count(), 2);
+    }
+
+    #[test]
+    fn add_task_with_custom_id() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        let id = block.add_task_with_id(TestTask::new("A", 10.0), Some("my-custom-id".into()));
+        assert_eq!(id, "my-custom-id");
+    }
+
+    #[test]
+    fn add_task_with_none_id_generates_id() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        let id = block.add_task_with_id(TestTask::new("A", 10.0), None);
+        assert!(!id.is_empty());
+    }
+
+    // ── Lookups ───────────────────────────────────────────────────────
+
+    #[test]
+    fn id_of_returns_correct_id() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        let _id = block.add_task_with_id(TestTask::new("A", 10.0), Some("task-a".into()));
+        let node = block.node_of("task-a").unwrap();
+        assert_eq!(block.id_of(node), Some("task-a"));
+    }
+
+    #[test]
+    fn id_of_returns_none_for_invalid_index() {
+        let block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        assert_eq!(block.id_of(petgraph::graph::NodeIndex::new(999)), None);
+    }
+
+    #[test]
+    fn node_of_returns_correct_index() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        let _id = block.add_task_with_id(TestTask::new("A", 10.0), Some("task-a".into()));
+        let node = block.node_of("task-a");
+        assert!(node.is_some());
+    }
+
+    #[test]
+    fn node_of_returns_none_for_unknown_id() {
+        let block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        assert_eq!(block.node_of("nonexistent"), None);
+    }
+
+    #[test]
+    fn task_by_id_returns_correct_task() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("Alpha", 10.0), Some("alpha".into()));
+        let task = block.task_by_id("alpha").unwrap();
+        assert_eq!(task.name(), "Alpha");
+    }
+
+    #[test]
+    fn task_by_id_returns_none_for_unknown() {
+        let block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        assert!(block.task_by_id("nope").is_none());
+    }
+
+    #[test]
+    fn task_by_id_mut_modifies_task() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("Before", 10.0), Some("t".into()));
+        if let Some(task) = block.task_by_id_mut("t") {
+            task.name = "After".to_string();
+        }
+        assert_eq!(block.task_by_id("t").unwrap().name(), "After");
+    }
+
+    #[test]
+    fn task_by_id_mut_returns_none_for_unknown() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        assert!(block.task_by_id_mut("nope").is_none());
+    }
+
+    #[test]
+    fn get_task_by_node() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("X", 5.0), Some("x".into()));
+        let node = block.node_of("x").unwrap();
+        assert_eq!(block.get_task(node).unwrap().name(), "X");
+    }
+
+    #[test]
+    fn get_task_mut_by_node() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("X", 5.0), Some("x".into()));
+        let node = block.node_of("x").unwrap();
+        block.get_task_mut(node).unwrap().name = "Y".to_string();
+        assert_eq!(block.get_task(node).unwrap().name(), "Y");
+    }
+
+    #[test]
+    fn get_task_returns_none_for_invalid_node() {
+        let block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        assert!(block
+            .get_task(petgraph::graph::NodeIndex::new(999))
+            .is_none());
+    }
+
+    // ── Tasks iterator ────────────────────────────────────────────────
+
+    #[test]
+    fn tasks_yields_all_pairs() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        block.add_task_with_id(TestTask::new("B", 20.0), Some("b".into()));
+
+        let mut pairs: Vec<_> = block
+            .tasks()
+            .map(|(id, t)| (id.to_owned(), t.name().to_owned()))
+            .collect();
+        pairs.sort();
+        assert_eq!(
+            pairs,
+            vec![
+                ("a".to_string(), "A".to_string()),
+                ("b".to_string(), "B".to_string())
+            ]
+        );
+    }
+
+    // ── Dependencies ──────────────────────────────────────────────────
+
+    #[test]
+    fn add_dependency_ok() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        block.add_task_with_id(TestTask::new("B", 10.0), Some("b".into()));
+        let na = block.node_of("a").unwrap();
+        let nb = block.node_of("b").unwrap();
+
+        assert!(block.add_dependency(na, nb, ()).is_ok());
+        assert_eq!(block.dependency_count(), 1);
+    }
+
+    #[test]
+    fn add_dependency_cycle_detected() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        block.add_task_with_id(TestTask::new("B", 10.0), Some("b".into()));
+        let na = block.node_of("a").unwrap();
+        let nb = block.node_of("b").unwrap();
+
+        block.add_dependency(na, nb, ()).unwrap();
+        let result = block.add_dependency(nb, na, ());
+        assert_eq!(result, Err(SchedulingError::CycleDetected));
+    }
+
+    #[test]
+    fn add_dependency_invalid_from_node() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        let na = block.node_of("a").unwrap();
+        let bad = petgraph::graph::NodeIndex::new(999);
+
+        let result = block.add_dependency(bad, na, ());
+        assert!(matches!(result, Err(SchedulingError::InvalidNodeIndex(_))));
+    }
+
+    #[test]
+    fn add_dependency_invalid_to_node() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        let na = block.node_of("a").unwrap();
+        let bad = petgraph::graph::NodeIndex::new(999);
+
+        let result = block.add_dependency(na, bad, ());
+        assert!(matches!(result, Err(SchedulingError::InvalidNodeIndex(_))));
+    }
+
+    #[test]
+    fn add_dependency_self_loop_is_cycle() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        let na = block.node_of("a").unwrap();
+
+        let result = block.add_dependency(na, na, ());
+        assert_eq!(result, Err(SchedulingError::CycleDetected));
+    }
+
+    // ── Topological order ─────────────────────────────────────────────
+
+    #[test]
+    fn topo_order_linear_dag() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        block.add_task_with_id(TestTask::new("B", 10.0), Some("b".into()));
+        block.add_task_with_id(TestTask::new("C", 10.0), Some("c".into()));
+        let na = block.node_of("a").unwrap();
+        let nb = block.node_of("b").unwrap();
+        let nc = block.node_of("c").unwrap();
+
+        block.add_dependency(na, nb, ()).unwrap();
+        block.add_dependency(nb, nc, ()).unwrap();
+
+        let order = block.topo_order().unwrap();
+        let pos_a = order.iter().position(|n| *n == na).unwrap();
+        let pos_b = order.iter().position(|n| *n == nb).unwrap();
+        let pos_c = order.iter().position(|n| *n == nc).unwrap();
+        assert!(pos_a < pos_b);
+        assert!(pos_b < pos_c);
+    }
+
+    #[test]
+    fn topo_order_empty_block() {
+        let block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        let order = block.topo_order().unwrap();
+        assert!(order.is_empty());
+    }
+
+    // ── Roots and leaves ──────────────────────────────────────────────
+
+    #[test]
+    fn roots_and_leaves_linear_chain() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        block.add_task_with_id(TestTask::new("B", 10.0), Some("b".into()));
+        block.add_task_with_id(TestTask::new("C", 10.0), Some("c".into()));
+        let na = block.node_of("a").unwrap();
+        let nb = block.node_of("b").unwrap();
+        let nc = block.node_of("c").unwrap();
+
+        block.add_dependency(na, nb, ()).unwrap();
+        block.add_dependency(nb, nc, ()).unwrap();
+
+        assert_eq!(block.roots(), vec![na]);
+        assert_eq!(block.leaves(), vec![nc]);
+    }
+
+    #[test]
+    fn single_task_is_both_root_and_leaf() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        let na = block.node_of("a").unwrap();
+
+        assert_eq!(block.roots(), vec![na]);
+        assert_eq!(block.leaves(), vec![na]);
+    }
+
+    #[test]
+    fn disconnected_tasks_multiple_roots_and_leaves() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        block.add_task_with_id(TestTask::new("B", 10.0), Some("b".into()));
+
+        assert_eq!(block.roots().len(), 2);
+        assert_eq!(block.leaves().len(), 2);
+    }
+
+    // ── Predecessors and successors ───────────────────────────────────
+
+    #[test]
+    fn predecessors_and_successors() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        block.add_task_with_id(TestTask::new("B", 10.0), Some("b".into()));
+        block.add_task_with_id(TestTask::new("C", 10.0), Some("c".into()));
+        let na = block.node_of("a").unwrap();
+        let nb = block.node_of("b").unwrap();
+        let nc = block.node_of("c").unwrap();
+
+        block.add_dependency(na, nb, ()).unwrap();
+        block.add_dependency(na, nc, ()).unwrap();
+
+        assert!(block.predecessors(na).is_empty());
+        assert_eq!(block.predecessors(nb), vec![na]);
+        assert_eq!(block.predecessors(nc), vec![na]);
+
+        let succs: Vec<_> = block.successors(na);
+        assert_eq!(succs.len(), 2);
+        assert!(succs.contains(&nb));
+        assert!(succs.contains(&nc));
+        assert!(block.successors(nb).is_empty());
+    }
+
+    // ── Critical path ─────────────────────────────────────────────────
+
+    #[test]
+    fn critical_path_empty_block() {
+        let block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        assert_eq!(block.critical_path(), Err(SchedulingError::EmptyGraph));
+    }
+
+    #[test]
+    fn critical_path_single_task() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        let na = block.node_of("a").unwrap();
+
+        let (cost, path) = block.critical_path().unwrap();
+        assert!((cost - 10.0).abs() < 1e-9);
+        assert_eq!(path, vec![na]);
+    }
+
+    #[test]
+    fn critical_path_linear_chain() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        block.add_task_with_id(TestTask::new("B", 20.0), Some("b".into()));
+        block.add_task_with_id(TestTask::new("C", 30.0), Some("c".into()));
+        let na = block.node_of("a").unwrap();
+        let nb = block.node_of("b").unwrap();
+        let nc = block.node_of("c").unwrap();
+
+        block.add_dependency(na, nb, ()).unwrap();
+        block.add_dependency(nb, nc, ()).unwrap();
+
+        let (cost, path) = block.critical_path().unwrap();
+        assert!((cost - 60.0).abs() < 1e-9);
+        assert_eq!(path, vec![na, nb, nc]);
+    }
+
+    #[test]
+    fn critical_path_diamond_dag() {
+        // Diamond: A -> B, A -> C, B -> D, C -> D
+        // A=10, B=30, C=5, D=10
+        // Path A->B->D = 50, Path A->C->D = 25 → critical = A->B->D
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        block.add_task_with_id(TestTask::new("B", 30.0), Some("b".into()));
+        block.add_task_with_id(TestTask::new("C", 5.0), Some("c".into()));
+        block.add_task_with_id(TestTask::new("D", 10.0), Some("d".into()));
+        let na = block.node_of("a").unwrap();
+        let nb = block.node_of("b").unwrap();
+        let nc = block.node_of("c").unwrap();
+        let nd = block.node_of("d").unwrap();
+
+        block.add_dependency(na, nb, ()).unwrap();
+        block.add_dependency(na, nc, ()).unwrap();
+        block.add_dependency(nb, nd, ()).unwrap();
+        block.add_dependency(nc, nd, ()).unwrap();
+
+        let (cost, path) = block.critical_path().unwrap();
+        assert!((cost - 50.0).abs() < 1e-9);
+        assert_eq!(path, vec![na, nb, nd]);
+    }
+
+    // ── Counts ────────────────────────────────────────────────────────
+
+    #[test]
+    fn task_count_and_dependency_count() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        assert_eq!(block.task_count(), 0);
+        assert_eq!(block.dependency_count(), 0);
+
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        block.add_task_with_id(TestTask::new("B", 10.0), Some("b".into()));
+        assert_eq!(block.task_count(), 2);
+
+        let na = block.node_of("a").unwrap();
+        let nb = block.node_of("b").unwrap();
+        block.add_dependency(na, nb, ()).unwrap();
+        assert_eq!(block.dependency_count(), 1);
+    }
+
+    // ── Graph access ──────────────────────────────────────────────────
+
+    #[test]
+    fn graph_ref_access() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task(TestTask::new("A", 10.0));
+        assert_eq!(block.graph().node_count(), 1);
+    }
+
+    #[test]
+    fn graph_mut_access() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task(TestTask::new("A", 10.0));
+        assert_eq!(block.graph_mut().node_count(), 1);
+    }
+
+    // ── Display ───────────────────────────────────────────────────────
+
+    #[test]
+    fn display_contains_task_info() {
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task(TestTask::new("Alpha", 10.0));
+        block.add_task(TestTask::new("Beta", 20.0));
+
+        let output = format!("{}", block);
+        assert!(output.contains("SchedulingBlock"));
+        assert!(output.contains("Tasks: 2"));
+        assert!(output.contains("Dependencies: 0"));
+        assert!(output.contains("Alpha"));
+        assert!(output.contains("Beta"));
+    }
+
+    #[test]
+    fn display_empty_block() {
+        let block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        let output = format!("{}", block);
+        assert!(output.contains("Tasks: 0"));
+    }
+
+    // ── Transitive cycle detection ────────────────────────────────────
+
+    #[test]
+    fn transitive_cycle_detected() {
+        // A -> B -> C, then C -> A should fail
+        let mut block: SchedulingBlock<TestTask> = SchedulingBlock::new();
+        block.add_task_with_id(TestTask::new("A", 10.0), Some("a".into()));
+        block.add_task_with_id(TestTask::new("B", 10.0), Some("b".into()));
+        block.add_task_with_id(TestTask::new("C", 10.0), Some("c".into()));
+        let na = block.node_of("a").unwrap();
+        let nb = block.node_of("b").unwrap();
+        let nc = block.node_of("c").unwrap();
+
+        block.add_dependency(na, nb, ()).unwrap();
+        block.add_dependency(nb, nc, ()).unwrap();
+        let result = block.add_dependency(nc, na, ());
+        assert_eq!(result, Err(SchedulingError::CycleDetected));
+    }
+}

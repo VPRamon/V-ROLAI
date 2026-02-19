@@ -55,3 +55,69 @@ impl<U: Unit + Send + Sync> Constraint<U> for IntervalConstraint<U> {
         self.interval().to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use qtty::Second;
+
+    fn iv(start: f64, end: f64) -> Interval<Second> {
+        Interval::from_f64(start, end)
+    }
+
+    #[test]
+    fn interval_constraint_new_and_accessor() {
+        let c = IntervalConstraint::new(iv(10.0, 50.0));
+        assert_eq!(c.interval().start().value(), 10.0);
+        assert_eq!(c.interval().end().value(), 50.0);
+    }
+
+    #[test]
+    fn compute_intervals_range_inside_constraint() {
+        // Range [20, 40] inside constraint [10, 50] → [20, 40]
+        let c = IntervalConstraint::new(iv(10.0, 50.0));
+        let result = c.compute_intervals(iv(20.0, 40.0));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], iv(20.0, 40.0));
+    }
+
+    #[test]
+    fn compute_intervals_range_outside_constraint() {
+        // Range [60, 80] outside constraint [10, 50] → empty
+        let c = IntervalConstraint::new(iv(10.0, 50.0));
+        let result = c.compute_intervals(iv(60.0, 80.0));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn compute_intervals_partial_overlap() {
+        // Range [30, 80] partial overlap with constraint [10, 50] → [30, 50]
+        let c = IntervalConstraint::new(iv(10.0, 50.0));
+        let result = c.compute_intervals(iv(30.0, 80.0));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], iv(30.0, 50.0));
+    }
+
+    #[test]
+    fn compute_intervals_range_contains_constraint() {
+        // Range [0, 100] contains constraint [10, 50] → [10, 50]
+        let c = IntervalConstraint::new(iv(10.0, 50.0));
+        let result = c.compute_intervals(iv(0.0, 100.0));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], iv(10.0, 50.0));
+    }
+
+    #[test]
+    fn stringify_format() {
+        let c = IntervalConstraint::new(iv(10.0, 50.0));
+        let s = c.stringify();
+        assert!(s.contains("10"));
+        assert!(s.contains("50"));
+    }
+
+    #[test]
+    fn print_does_not_panic() {
+        let c = IntervalConstraint::new(iv(0.0, 100.0));
+        c.print(); // Should not panic
+    }
+}

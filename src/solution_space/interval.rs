@@ -197,4 +197,99 @@ mod tests {
         assert!(interval2.overlaps(&interval1));
         assert!(!interval1.overlaps(&interval3));
     }
+
+    // ── Gap coverage tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_intersection_overlapping() {
+        let a = Interval::new(Quantity::<Second>::new(0.0), Quantity::<Second>::new(100.0));
+        let b = Interval::new(
+            Quantity::<Second>::new(50.0),
+            Quantity::<Second>::new(150.0),
+        );
+        let result = a.intersection(&b).unwrap();
+        assert_eq!(result.start().value(), 50.0);
+        assert_eq!(result.end().value(), 100.0);
+    }
+
+    #[test]
+    fn test_intersection_non_overlapping() {
+        let a = Interval::new(Quantity::<Second>::new(0.0), Quantity::<Second>::new(50.0));
+        let b = Interval::new(
+            Quantity::<Second>::new(60.0),
+            Quantity::<Second>::new(100.0),
+        );
+        assert!(a.intersection(&b).is_none());
+    }
+
+    #[test]
+    fn test_intersection_contained() {
+        let a = Interval::new(Quantity::<Second>::new(0.0), Quantity::<Second>::new(100.0));
+        let b = Interval::new(Quantity::<Second>::new(20.0), Quantity::<Second>::new(80.0));
+        let result = a.intersection(&b).unwrap();
+        assert_eq!(result.start().value(), 20.0);
+        assert_eq!(result.end().value(), 80.0);
+    }
+
+    #[test]
+    fn test_intersection_touching_endpoints() {
+        let a = Interval::new(Quantity::<Second>::new(0.0), Quantity::<Second>::new(50.0));
+        let b = Interval::new(
+            Quantity::<Second>::new(50.0),
+            Quantity::<Second>::new(100.0),
+        );
+        let result = a.intersection(&b).unwrap();
+        assert_eq!(result.start().value(), 50.0);
+        assert_eq!(result.end().value(), 50.0);
+    }
+
+    #[test]
+    fn test_display_format() {
+        let interval = Interval::new(Quantity::<Second>::new(1.5), Quantity::<Second>::new(99.25));
+        let s = format!("{}", interval);
+        assert!(s.contains("1.500"));
+        assert!(s.contains("99.250"));
+    }
+
+    #[test]
+    fn test_from_f64() {
+        let interval = Interval::<Second>::from_f64(10.0, 20.0);
+        assert_eq!(interval.start().value(), 10.0);
+        assert_eq!(interval.end().value(), 20.0);
+    }
+
+    #[test]
+    fn test_zero_width_interval() {
+        let interval = Interval::new(Quantity::<Second>::new(5.0), Quantity::<Second>::new(5.0));
+        assert_eq!(interval.duration().value(), 0.0);
+        assert!(interval.contains(Quantity::<Second>::new(5.0)));
+    }
+
+    #[test]
+    fn test_can_fit_at_boundary() {
+        let interval = Interval::new(Quantity::<Second>::new(0.0), Quantity::<Second>::new(100.0));
+        // Exactly fits from 0 to 100
+        assert!(interval.can_fit(Quantity::<Second>::new(0.0), Quantity::<Second>::new(100.0)));
+        // Does NOT fit starting at 1 with size 100
+        assert!(!interval.can_fit(Quantity::<Second>::new(1.0), Quantity::<Second>::new(100.0)));
+    }
+
+    #[test]
+    fn test_contains_boundary() {
+        let interval = Interval::new(Quantity::<Second>::new(10.0), Quantity::<Second>::new(20.0));
+        assert!(!interval.contains(Quantity::<Second>::new(9.999)));
+        assert!(interval.contains(Quantity::<Second>::new(10.0)));
+        assert!(interval.contains(Quantity::<Second>::new(20.0)));
+        assert!(!interval.contains(Quantity::<Second>::new(20.001)));
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_serde_roundtrip() {
+        let interval = Interval::<Second>::from_f64(10.0, 50.0);
+        let json = serde_json::to_string(&interval).unwrap();
+        let restored: Interval<Second> = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.start().value(), 10.0);
+        assert_eq!(restored.end().value(), 50.0);
+    }
 }

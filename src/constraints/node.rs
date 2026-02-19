@@ -580,6 +580,184 @@ mod tests {
         assert!(negated.is_not());
     }
 
+    // ── Gap coverage tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_is_not() {
+        let node = ConstraintExpr::<i32>::negate(ConstraintExpr::leaf(1));
+        assert!(node.is_not());
+        assert!(!node.is_leaf());
+        assert!(!node.is_intersection());
+        assert!(!node.is_union());
+    }
+
+    #[test]
+    fn test_is_union() {
+        let node =
+            ConstraintExpr::<i32>::union(vec![ConstraintExpr::leaf(1), ConstraintExpr::leaf(2)]);
+        assert!(node.is_union());
+        assert!(!node.is_leaf());
+        assert!(!node.is_intersection());
+        assert!(!node.is_not());
+    }
+
+    #[test]
+    fn test_children_none_for_leaf() {
+        let leaf = ConstraintExpr::<i32>::leaf(42);
+        assert!(leaf.children().is_none());
+    }
+
+    #[test]
+    fn test_children_none_for_not() {
+        let not_node = ConstraintExpr::<i32>::negate(ConstraintExpr::leaf(1));
+        assert!(not_node.children().is_none());
+    }
+
+    #[test]
+    fn test_children_mut_modifies() {
+        let mut intersection = ConstraintExpr::<i32>::intersection(vec![
+            ConstraintExpr::leaf(1),
+            ConstraintExpr::leaf(2),
+        ]);
+        if let Some(children) = intersection.children_mut() {
+            children.push(ConstraintExpr::leaf(3));
+        }
+        assert_eq!(intersection.children().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn test_children_mut_none_for_leaf() {
+        let mut leaf = ConstraintExpr::<i32>::leaf(42);
+        assert!(leaf.children_mut().is_none());
+    }
+
+    #[test]
+    fn test_visit_preorder() {
+        // Tree: Intersection(Leaf(1), Not(Leaf(2)), Leaf(3))
+        let tree = ConstraintExpr::<i32>::intersection(vec![
+            ConstraintExpr::leaf(1),
+            ConstraintExpr::negate(ConstraintExpr::leaf(2)),
+            ConstraintExpr::leaf(3),
+        ]);
+
+        let mut visit_order = Vec::new();
+        tree.visit_preorder(&mut |node| {
+            if node.is_intersection() {
+                visit_order.push("intersection");
+            } else if node.is_not() {
+                visit_order.push("not");
+            } else if node.is_leaf() {
+                visit_order.push("leaf");
+            }
+        });
+
+        assert_eq!(
+            visit_order,
+            vec!["intersection", "leaf", "not", "leaf", "leaf"]
+        );
+    }
+
+    #[test]
+    fn test_flatten_union() {
+        let nested = ConstraintExpr::<i32>::union(vec![
+            ConstraintExpr::union(vec![ConstraintExpr::leaf(1), ConstraintExpr::leaf(2)]),
+            ConstraintExpr::leaf(3),
+        ]);
+
+        let flattened = nested.flatten();
+        assert!(flattened.is_union());
+        assert_eq!(flattened.children().unwrap().len(), 3);
+        assert_eq!(flattened.leaf_count(), 3);
+    }
+
+    #[test]
+    fn test_depth_not_node() {
+        let node = ConstraintExpr::<i32>::negate(ConstraintExpr::negate(ConstraintExpr::leaf(1)));
+        assert_eq!(node.depth(), 3); // Not(Not(Leaf))
+    }
+
+    #[test]
+    fn test_node_count_not_node() {
+        let node = ConstraintExpr::<i32>::negate(ConstraintExpr::leaf(1));
+        assert_eq!(node.node_count(), 2);
+    }
+
+    #[test]
+    fn test_leaf_count_not_node() {
+        let node = ConstraintExpr::<i32>::negate(ConstraintExpr::leaf(1));
+        assert_eq!(node.leaf_count(), 1);
+    }
+
+    #[test]
+    fn test_stringify_leaf() {
+        let constraint = IntervalConstraint::new(Interval::<Second>::from_f64(10.0, 50.0));
+        let leaf = ConstraintExpr::leaf(constraint);
+        let s = leaf.stringify();
+        assert!(s.contains("10"));
+        assert!(s.contains("50"));
+    }
+
+    #[test]
+    fn test_stringify_not() {
+        let constraint = IntervalConstraint::new(Interval::<Second>::from_f64(10.0, 50.0));
+        let not_node = ConstraintExpr::negate(ConstraintExpr::leaf(constraint));
+        let s = not_node.stringify();
+        assert!(s.starts_with("Not("));
+    }
+
+    #[test]
+    fn test_stringify_intersection() {
+        let a = ConstraintExpr::leaf(IntervalConstraint::new(Interval::<Second>::from_f64(
+            0.0, 50.0,
+        )));
+        let b = ConstraintExpr::leaf(IntervalConstraint::new(Interval::<Second>::from_f64(
+            10.0, 60.0,
+        )));
+        let intersection = ConstraintExpr::intersection(vec![a, b]);
+        let s = intersection.stringify();
+        assert!(s.starts_with("Intersection("));
+        assert!(s.contains("∩"));
+    }
+
+    #[test]
+    fn test_stringify_union() {
+        let a = ConstraintExpr::leaf(IntervalConstraint::new(Interval::<Second>::from_f64(
+            0.0, 50.0,
+        )));
+        let b = ConstraintExpr::leaf(IntervalConstraint::new(Interval::<Second>::from_f64(
+            60.0, 100.0,
+        )));
+        let union = ConstraintExpr::union(vec![a, b]);
+        let s = union.stringify();
+        assert!(s.starts_with("Union("));
+        assert!(s.contains("∪"));
+    }
+
+    #[test]
+    fn test_print_tree_with() {
+        // Just ensure it doesn't panic
+        let tree = ConstraintExpr::<i32>::intersection(vec![
+            ConstraintExpr::leaf(1),
+            ConstraintExpr::negate(ConstraintExpr::leaf(2)),
+        ]);
+        tree.print_tree_with(0, &|x| format!("{}", x));
+    }
+
+    #[test]
+    fn test_deep_tree_depth() {
+        // Intersection(Union(Leaf, Leaf), Not(Intersection(Leaf, Leaf)))
+        let deep = ConstraintExpr::<i32>::intersection(vec![
+            ConstraintExpr::union(vec![ConstraintExpr::leaf(1), ConstraintExpr::leaf(2)]),
+            ConstraintExpr::negate(ConstraintExpr::intersection(vec![
+                ConstraintExpr::leaf(3),
+                ConstraintExpr::leaf(4),
+            ])),
+        ]);
+        assert_eq!(deep.depth(), 4); // Intersection → Not → Intersection → Leaf
+        assert_eq!(deep.node_count(), 8);
+        assert_eq!(deep.leaf_count(), 4);
+    }
+
     /// Test serde roundtrip for ConstraintExpr with simple leaf type.
     #[cfg(feature = "serde")]
     #[test]
