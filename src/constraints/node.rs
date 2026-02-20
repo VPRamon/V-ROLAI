@@ -402,6 +402,77 @@ where
     }
 }
 
+// Implement the DynamicConstraint trait for trees whose leaves are dynamic constraints.
+// This enables composing dynamic constraints with AND/OR/NOT logic, just like static ones.
+impl<U, C> crate::constraints::hard::dynamic::DynamicConstraint<U> for ConstraintExpr<C>
+where
+    U: Unit,
+    C: crate::constraints::hard::dynamic::DynamicConstraint<U>,
+{
+    fn compute_intervals(
+        &self,
+        range: Interval<U>,
+        ref_task_id: &str,
+        ctx: &crate::constraints::hard::dynamic::SchedulingContext<U>,
+    ) -> IntervalSet<U> {
+        match self {
+            ConstraintExpr::Leaf(constraint) => {
+                constraint.compute_intervals(range, ref_task_id, ctx)
+            }
+            ConstraintExpr::Not { child, .. } => super::operations::compute_complement(
+                child
+                    .compute_intervals(range, ref_task_id, ctx)
+                    .into_inner(),
+                range,
+            ),
+            ConstraintExpr::Intersection { children, .. } => children
+                .iter()
+                .map(|c| c.compute_intervals(range, ref_task_id, ctx))
+                .reduce(|acc, v| super::operations::compute_intersection(&acc, &v))
+                .unwrap_or_default(),
+            ConstraintExpr::Union { children, .. } => children
+                .iter()
+                .map(|c| c.compute_intervals(range, ref_task_id, ctx))
+                .fold(IntervalSet::new(), |acc, v| {
+                    super::operations::compute_union(&acc, &v)
+                }),
+        }
+    }
+
+    fn stringify(&self) -> String {
+        // Delegate to the same stringify logic — tree structure is identical.
+        match self {
+            ConstraintExpr::Leaf(constraint) => {
+                crate::constraints::hard::dynamic::DynamicConstraint::<U>::stringify(constraint)
+            }
+            ConstraintExpr::Not { child, .. } => {
+                format!(
+                    "Not({})",
+                    crate::constraints::hard::dynamic::DynamicConstraint::<U>::stringify(
+                        child.as_ref()
+                    )
+                )
+            }
+            ConstraintExpr::Intersection { children, .. } => format!(
+                "Intersection({})",
+                children
+                    .iter()
+                    .map(|c| crate::constraints::hard::dynamic::DynamicConstraint::<U>::stringify(c))
+                    .collect::<Vec<_>>()
+                    .join(" ∩ ")
+            ),
+            ConstraintExpr::Union { children, .. } => format!(
+                "Union({})",
+                children
+                    .iter()
+                    .map(|c| crate::constraints::hard::dynamic::DynamicConstraint::<U>::stringify(c))
+                    .collect::<Vec<_>>()
+                    .join(" ∪ ")
+            ),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

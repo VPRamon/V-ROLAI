@@ -240,6 +240,61 @@ where
     }
 }
 
+// Dynamic constraint evaluation methods.
+//
+// Available only when edge data `D` implements `DynamicConstraint<U>`.
+impl<T, U, D, E> SchedulingBlock<T, U, D, E>
+where
+    T: Task<U>,
+    U: Unit,
+    D: crate::constraints::hard::dynamic::DynamicConstraint<U>,
+    E: EdgeType,
+{
+    /// Evaluates all incoming dynamic constraints for a task and returns
+    /// their intersection (AND-composition).
+    ///
+    /// Walks predecessors of `task_id` in the dependency graph, evaluates
+    /// each edge's constraint against the current scheduling context, and
+    /// intersects the results.
+    ///
+    /// Returns `None` if the task has no incoming dynamic constraints.
+    ///
+    /// # Arguments
+    ///
+    /// * `task_id` — ID of the target task
+    /// * `range` — the scheduling horizon / query range
+    /// * `ctx` — current scheduling context (partial schedule + solution space)
+    pub fn evaluate_dynamic_constraints(
+        &self,
+        task_id: &str,
+        range: crate::solution_space::Interval<U>,
+        ctx: &crate::constraints::hard::dynamic::SchedulingContext<U>,
+    ) -> Option<crate::solution_space::IntervalSet<U>> {
+        let node = self.node_by_id.get(task_id)?;
+        let incoming: Vec<_> = self
+            .graph
+            .neighbors_directed(*node, Direction::Incoming)
+            .collect();
+
+        if incoming.is_empty() {
+            return None;
+        }
+
+        let result = incoming
+            .iter()
+            .filter_map(|&pred_node| {
+                let pred_id = self.id_by_node.get(&pred_node)?;
+                // Get edge weight from pred → node
+                let edge_idx = self.graph.find_edge(pred_node, *node)?;
+                let constraint = self.graph.edge_weight(edge_idx)?;
+                Some(constraint.compute_intervals(range, pred_id, ctx))
+            })
+            .reduce(|acc, v| crate::constraints::operations::compute_intersection(&acc, &v));
+
+        result
+    }
+}
+
 // Implementation of time-dependent methods (generic over unit)
 impl<T, U, D, E> SchedulingBlock<T, U, D, E>
 where

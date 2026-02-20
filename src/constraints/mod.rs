@@ -9,6 +9,9 @@ pub use hard::Constraint;
 pub use hard::IntervalConstraint;
 pub use node::ConstraintExpr;
 
+// Re-export dynamic constraint types at the `constraints` level.
+pub use hard::{DynConstraintKind, DynamicConstraint, DynamicConstraintIndex, SchedulingContext};
+
 use qtty::{Quantity, Unit};
 
 /// Returns the minimum of two quantities.
