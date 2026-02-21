@@ -6,6 +6,8 @@
 //! The [`Constraint`] trait and the built-in [`IntervalConstraint`] live here.
 
 pub mod constraint;
+pub mod resource;
 
 pub use constraint::Constraint;
 pub use constraint::IntervalConstraint;
+pub use resource::ResourceConstraint;

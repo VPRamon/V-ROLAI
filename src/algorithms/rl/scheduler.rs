@@ -72,22 +72,6 @@ where
     ) -> Schedule<U> {
         let mut schedule = Schedule::new();
 
-        // Milestone 1 guardrail: reject multi-type requirements upfront.
-        for block in blocks {
-            for (_, task) in block.tasks() {
-                if let Some(reqs) = task.type_requirements() {
-                    assert!(
-                        reqs.middle == 0 && reqs.old == 0,
-                        "RLScheduler milestone 1: task '{}' requires non-Young agent types \
-                         (middle={}, old={}). Multi-type scheduling is not yet supported.",
-                        task.name(),
-                        reqs.middle,
-                        reqs.old,
-                    );
-                }
-            }
-        }
-
         let horizon_start = horizon.start().value();
         let horizon_end = horizon.end().value();
 
@@ -132,7 +116,7 @@ where
                     };
 
                     let total_capacity: f64 = fitting.iter().map(|&(s, e)| e - s).sum();
-                    let score = greedy_score(task.value(), task.priority(), total_capacity);
+                    let score = greedy_score(task.priority(), total_capacity);
 
                     // Prefer: (1) highest score, (2) earliest start as tiebreaker.
                     if score > best_score || (score == best_score && start < best_start) {
@@ -163,12 +147,12 @@ where
 
 /// Scores a task for greedy selection.
 ///
-/// Combines value/priority with urgency (inverse of remaining feasible capacity).
+/// Combines priority with urgency (inverse of remaining feasible capacity).
 /// Tasks with less scheduling room get a higher urgency multiplier.
-fn greedy_score(value: f64, priority: i32, remaining_capacity: f64) -> f64 {
+fn greedy_score(priority: i32, remaining_capacity: f64) -> f64 {
     let eps = 1e-6;
     let urgency = 1.0 / (eps + remaining_capacity);
-    let value_component = value.max(priority as f64);
+    let value_component = (priority as f64).max(1.0);
     value_component * urgency
 }
 

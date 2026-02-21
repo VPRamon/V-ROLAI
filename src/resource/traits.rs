@@ -57,6 +57,23 @@ pub trait Resource<A: Unit>: Send + Sync + Debug + 'static {
     /// Returns a human-readable name for this resource.
     fn name(&self) -> &str;
 
+    /// Returns a unique identifier for this resource.
+    ///
+    /// Defaults to [`name()`](Self::name). Override when the display name
+    /// differs from the machine identifier.
+    fn resource_id(&self) -> &str {
+        self.name()
+    }
+
+    /// Returns a type/category label for this resource (e.g., `"LST"`, `"MAGIC"`).
+    ///
+    /// Used by [`ResourceConstraint`](crate::constraints::ResourceConstraint) to
+    /// match tasks against resource categories. Defaults to an empty string,
+    /// meaning the resource has no declared type.
+    fn resource_type(&self) -> &str {
+        ""
+    }
+
     /// Returns the resource-level constraints, if any.
     ///
     /// These constraints are computed once and intersected with all task windows

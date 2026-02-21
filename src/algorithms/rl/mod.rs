@@ -1,67 +1,60 @@
-//! Multi-agent Reinforcement Learning scheduling algorithm.
+//! RL-based scheduling module.
 //!
-//! This module implements a cooperative multi-agent RL system for scheduling
-//! tasks in a 2D spatial environment with heterogeneous agents and coalition
-//! requirements. The approach uses hierarchical control: RL decides task
-//! assignment (high-level) while a deterministic controller handles movement
-//! (low-level).
+//! The [`scheduler::RLScheduler`] is always available and implements the
+//! [`SchedulingAlgorithm`](crate::algorithms::SchedulingAlgorithm) trait
+//! via a greedy heuristic.
 //!
-//! # Architecture
-//!
-//! - **Environment** ([`environment::RLEnvironment`]): Simulates agents moving in a
-//!   2D domain, collecting tasks that spawn and expire over time.
-//! - **Policies**: Pluggable via the [`policy::Policy`] trait. Includes a
-//!   [`policy::RandomPolicy`] for testing and a [`policy::GreedyHeuristicPolicy`]
-//!   as a competitive baseline.
-//! - **Observation**: Per-agent observations encode own state plus Top-M candidate
-//!   tasks, built by [`observation::ObservationBuilder`].
-//! - **Reward**: Composite reward function combining collection value, shaping,
-//!   and penalties, computed by [`reward::RewardComputer`].
-//!
-//! # Feature flags
-//!
-//! - `rl-nn`: Enables neural network policies and MAPPO training via `tch-rs`.
-//!   Without this flag, only the environment, heuristic policies, and evaluation
-//!   tools are available.
-//!
-//! # Quick start
-//!
-//! ```ignore
-//! use virolai::algorithms::rl::{RLConfig, RLEnvironment, GreedyHeuristicPolicy, EvaluationMetrics};
-//!
-//! let config = RLConfig::default();
-//! let mut env = RLEnvironment::new(config, 42);
-//! let mut policy = GreedyHeuristicPolicy::new();
-//! let metrics = EvaluationMetrics::evaluate(&mut env, &mut policy, 10);
-//! println!("{}", metrics);
-//! ```
+//! The full multi-agent RL environment, policies, and training infrastructure
+//! are behind the `rl` feature flag (which brings in `rand`).  Neural network
+//! policies and MAPPO training additionally require the `rl-nn` feature flag.
 
-pub mod agent;
-pub mod config;
-pub mod environment;
-pub mod metrics;
-pub mod observation;
-pub mod policy;
-pub mod reward;
+// Always available — no extra dependencies.
 pub mod scheduler;
-pub mod task_pool;
 pub mod types;
+
+// Modules that require the `rl` feature (rand dependency).
+#[cfg(feature = "rl")]
+pub mod agent;
+#[cfg(feature = "rl")]
+pub mod config;
+#[cfg(feature = "rl")]
+pub mod environment;
+#[cfg(feature = "rl")]
+pub mod metrics;
+#[cfg(feature = "rl")]
+pub mod observation;
+#[cfg(feature = "rl")]
+pub mod policy;
+#[cfg(feature = "rl")]
+pub mod reward;
+#[cfg(feature = "rl")]
+pub mod task_pool;
 
 #[cfg(feature = "rl-nn")]
 pub mod network;
 #[cfg(feature = "rl-nn")]
 pub mod training;
 
-// Public re-exports
-pub use agent::AgentState;
-pub use config::RLConfig;
-pub use environment::{RLEnvironment, StepResult};
-pub use metrics::EvaluationMetrics;
-pub use observation::ObservationBuilder;
-pub use policy::{GreedyHeuristicPolicy, Policy, RandomPolicy};
-pub use reward::RewardComputer;
-pub use task_pool::{TaskInstance, TaskPool};
+// Public re-exports — always available.
 pub use types::{AgentType, AgentTypeRequirements, Position};
+
+// Re-exports gated behind `rl` feature.
+#[cfg(feature = "rl")]
+pub use agent::AgentState;
+#[cfg(feature = "rl")]
+pub use config::RLConfig;
+#[cfg(feature = "rl")]
+pub use environment::{RLEnvironment, StepResult};
+#[cfg(feature = "rl")]
+pub use metrics::EvaluationMetrics;
+#[cfg(feature = "rl")]
+pub use observation::ObservationBuilder;
+#[cfg(feature = "rl")]
+pub use policy::{GreedyHeuristicPolicy, Policy, RandomPolicy};
+#[cfg(feature = "rl")]
+pub use reward::RewardComputer;
+#[cfg(feature = "rl")]
+pub use task_pool::{TaskInstance, TaskPool};
 
 #[cfg(feature = "rl-nn")]
 pub use network::NeuralPolicy;

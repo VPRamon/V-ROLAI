@@ -25,10 +25,12 @@
 //! Custom kinds can be added by implementing [`DynamicConstraint`] for a
 //! new type.
 
+pub mod coalition;
 pub mod constraint;
 pub mod evaluate;
 pub mod kinds;
 
+pub use coalition::CoalitionConstraint;
 pub use constraint::{DynamicConstraint, SchedulingContext};
 pub use evaluate::DynamicConstraintIndex;
 pub use kinds::DynConstraintKind;

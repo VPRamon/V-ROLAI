@@ -1,10 +1,12 @@
 pub mod error;
+pub mod spatial;
 pub mod task;
 
 mod block;
 pub use block::SchedulingBlock;
 
 pub use error::SchedulingError;
+pub use spatial::SpatialTask;
 pub use task::Task;
 
 // Re-export from the dedicated `resource` module for backward compatibility.

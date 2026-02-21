@@ -7,10 +7,14 @@ pub mod soft;
 pub use error::ConstraintError;
 pub use hard::Constraint;
 pub use hard::IntervalConstraint;
+pub use hard::ResourceConstraint;
 pub use node::ConstraintExpr;
 
 // Re-export dynamic constraint types at the `constraints` level.
-pub use hard::{DynConstraintKind, DynamicConstraint, DynamicConstraintIndex, SchedulingContext};
+pub use hard::{
+    CoalitionConstraint, DynConstraintKind, DynamicConstraint, DynamicConstraintIndex,
+    SchedulingContext,
+};
 
 use qtty::{Quantity, Unit};
 
