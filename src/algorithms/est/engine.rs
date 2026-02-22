@@ -29,7 +29,39 @@ pub fn update_candidates<T, U>(
     }
 
     // Sort candidates
-    candidates.sort_by(|a, b| compare_candidates(a, b, endangered_threshold));
+    // Sort candidates using a total, deterministic key to avoid panics from
+    // comparator inconsistencies when floating-point values (NaN) are present.
+    fn f64_to_ordered_i128(x: f64) -> i128 {
+        let u = x.to_bits() as i128;
+        // Map IEEE-754 bit pattern to lexicographically ordered integer
+        if (u as u128) >> 127 & 1 == 1 {
+            !u
+        } else {
+            u ^ (1i128 << 63)
+        }
+    }
+
+    candidates.sort_by_key(|c| {
+        // impossible last
+        let impossible_flag: u8 = if c.is_impossible() { 1 } else { 0 };
+        // kind: endangered (0), flexible (1), other (2)
+        let kind: u8 = if c.is_endangered(endangered_threshold) {
+            0
+        } else if c.is_flexible(endangered_threshold) {
+            1
+        } else {
+            2
+        };
+        // EST key (total order). Missing EST → large value to push later.
+        let est_key: i128 = c.est().map(|q| f64_to_ordered_i128(q.value())).unwrap_or(i128::MAX / 4);
+        // priority: higher first → negate to sort ascending
+        let prio_key: i32 = -c.task().priority();
+        // flexibility key (total order)
+        let flex_key: i128 = f64_to_ordered_i128(c.flexibility().value());
+        // final tie-breaker: task id
+        let tid = c.task_id().to_string();
+        (impossible_flag, kind, est_key, prio_key, flex_key, tid)
+    });
 }
 
 /// Checks if scheduling is done (no more schedulable tasks or cursor past horizon).

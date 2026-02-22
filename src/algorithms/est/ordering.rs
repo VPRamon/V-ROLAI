@@ -24,10 +24,7 @@ where
     // Earlier EST first
     if let (Some(est_a), Some(est_b)) = (a.est(), b.est()) {
         if est_a.value() != est_b.value() {
-            return est_a
-                .value()
-                .partial_cmp(&est_b.value())
-                .unwrap_or(Ordering::Equal);
+            return f64::total_cmp(&est_a.value(), &est_b.value());
         }
     }
 
@@ -40,11 +37,7 @@ where
 
     // Less flexible first
     if a.flexibility().value() != b.flexibility().value() {
-        return a
-            .flexibility()
-            .value()
-            .partial_cmp(&b.flexibility().value())
-            .unwrap_or(Ordering::Equal);
+        return f64::total_cmp(&a.flexibility().value(), &b.flexibility().value());
     }
 
     // Tie-breaker: task ID
